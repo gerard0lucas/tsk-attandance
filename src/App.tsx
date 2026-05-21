@@ -37,12 +37,25 @@ function AuthEntry() {
   if (!isSupabaseConfigured()) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-page p-6">
-        <div className="max-w-md rounded border border-morning bg-white p-6 text-center shadow-sm">
+        <div className="max-w-md rounded border border-morning bg-white p-6 text-left shadow-sm">
           <h1 className="text-lg font-semibold text-cerulean">Supabase not configured</h1>
           <p className="mt-2 text-sm text-mist">
-            Copy <code className="text-cerulean">.env.example</code> to <code className="text-cerulean">.env</code> and
-            add your project URL and anon key. Run <code className="text-cerulean">supabase/schema.sql</code> in the
-            Supabase SQL editor, then create an admin user.
+            This build has no Supabase keys. On <strong>Netlify</strong>, add environment variables, then
+            <strong> redeploy</strong> (required for Vite):
+          </p>
+          <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-mist">
+            <li>
+              <code className="text-cerulean">VITE_SUPABASE_URL</code> — e.g.{" "}
+              <code className="text-cerulean">https://xxxx.supabase.co</code> (no <code>/rest/v1</code>)
+            </li>
+            <li>
+              <code className="text-cerulean">VITE_SUPABASE_ANON_KEY</code> — anon public key from Supabase → Settings
+              → API
+            </li>
+          </ul>
+          <p className="mt-3 text-sm text-mist">
+            Locally: copy <code className="text-cerulean">.env.example</code> to <code className="text-cerulean">.env</code>
+            .
           </p>
         </div>
       </div>

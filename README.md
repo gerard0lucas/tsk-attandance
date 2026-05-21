@@ -55,10 +55,34 @@ Sign in with the admin user you created.
 
 ## Deploy (Netlify)
 
-- Build command: `npm run build`
-- Publish directory: `dist`
-- Environment variables: same `VITE_SUPABASE_*` keys
-- SPA routing: `public/_redirects` is included (`/* /index.html 200`)
+The repo includes `netlify.toml` (build + SPA redirects).
+
+### 1. Environment variables (required)
+
+In **Netlify → Site configuration → Environment variables**, add:
+
+| Key | Value |
+|-----|--------|
+| `VITE_SUPABASE_URL` | `https://YOUR_PROJECT.supabase.co` (Project URL only, **not** `/rest/v1`) |
+| `VITE_SUPABASE_ANON_KEY` | Anon public key from Supabase → **Settings → API** |
+
+Then **Deploys → Trigger deploy → Deploy site** (a new build is required; changing env alone is not enough).
+
+### 2. Supabase Auth URLs (required for live login)
+
+In **Supabase → Authentication → URL Configuration**:
+
+- **Site URL:** `https://YOUR-SITE.netlify.app` (your real Netlify URL)
+- **Redirect URLs:** add `https://YOUR-SITE.netlify.app/**`
+
+Save, then try signing in on the live site with the same email/password you use locally.
+
+### 3. If login still fails on Netlify
+
+- Confirm the user exists under **Authentication → Users** and is **confirmed**
+- Confirm `profiles` has a row with `role` = `admin` or `manager` for that user
+- Turn off **Confirm email** under **Authentication → Providers → Email** (or confirm the user by email)
+- Check the red error on the login form (e.g. invalid credentials vs no profile)
 
 ## Managers
 

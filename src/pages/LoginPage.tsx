@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
+import { isSupabaseConfigured } from "../lib/supabase";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import type { UserRole } from "../types";
@@ -75,6 +76,14 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
             />
+
+            {!isSupabaseConfigured() && (
+              <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Supabase keys are missing in this build. On Netlify, set{" "}
+                <code className="text-cerulean">VITE_SUPABASE_URL</code> and{" "}
+                <code className="text-cerulean">VITE_SUPABASE_ANON_KEY</code>, then redeploy.
+              </p>
+            )}
 
             {error && (
               <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

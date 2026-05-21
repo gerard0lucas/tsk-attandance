@@ -140,10 +140,18 @@ export const useStore = create<AppState>()((set, get) => ({
       const result = await db.signIn(email, password);
       if (!result.ok) return result;
 
-      const session = await db.fetchSessionProfile();
+      let session = await db.fetchSessionProfile();
+      if (!session) {
+        await new Promise((r) => setTimeout(r, 400));
+        session = await db.fetchSessionProfile();
+      }
       if (!session) {
         await db.signOut();
-        return { ok: false, message: "No profile found for this account. Contact an admin." };
+        return {
+          ok: false,
+          message:
+            "No profile found for this account. In Supabase, set profiles.role to admin or manager for this user.",
+        };
       }
 
       set({ session });

@@ -1,7 +1,8 @@
 import { supabase } from "../supabase";
 import { generateQrToken } from "../qr";
 import { normalizeEmail } from "../auth";
-import type { AttendanceRecord, Branch, Manager, Session, Student, UserRole } from "../../types";
+import type { AttendanceRecord, Branch, Manager, Session, Student } from "../../types";
+import { fetchSessionProfile } from "../session";
 import {
   toAttendance,
   toBranch,
@@ -15,30 +16,7 @@ import {
 import { isDataUrl, removeStudentPhoto, uploadStudentPhoto } from "../storage";
 import { pauseAuthSync, resumeAuthSync } from "../authSync";
 
-export async function fetchSessionProfile(): Promise<Session | null> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const user = session?.user;
-  if (!user) return null;
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, email, name, role, created_at")
-    .eq("id", user.id)
-    .single();
-
-  if (error || !data) return null;
-
-  const row = data as ProfileRow;
-  if (row.role !== "admin" && row.role !== "manager") return null;
-
-  return {
-    role: row.role as UserRole,
-    userId: row.id,
-    name: row.name,
-  };
-}
+export { fetchSessionProfile } from "../session";
 
 export async function signIn(email: string, password: string): Promise<{ ok: true } | { ok: false; message: string }> {
   const { error } = await supabase.auth.signInWithPassword({

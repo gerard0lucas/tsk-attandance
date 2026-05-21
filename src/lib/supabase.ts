@@ -17,7 +17,14 @@ if (!url || !anonKey) {
   );
 }
 
-export const supabase = createClient(url, anonKey);
+export const supabase = createClient(url, anonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: typeof window !== "undefined" ? window.localStorage : undefined,
+  },
+});
 
 export function isSupabaseConfigured(): boolean {
   return Boolean(url && anonKey);

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { isAuthSyncPaused } from "../lib/authSync";
-import * as db from "../lib/db";
+import { fetchSessionProfile, hasAuthUser } from "../lib/session";
 import { useStore } from "../store/useStore";
 
 const INIT_TIMEOUT_MS = 8000;
@@ -26,16 +26,29 @@ export function useAppInit() {
 
     const timeoutId = window.setTimeout(finishInit, INIT_TIMEOUT_MS);
 
+    /** Never wipe session on TOKEN_REFRESHED if profile fetch blips */
+    const applyAuthState = async (reloadData: boolean) => {
+      const profile = await fetchSessionProfile();
+      if (profile) {
+        setSession(profile);
+        if (reloadData) void loadAllData().catch(() => undefined);
+        return;
+      }
+
+      const stillAuthed = await hasAuthUser();
+      const existing = useStore.getState().session;
+      if (stillAuthed && existing) return;
+
+      if (!stillAuthed) {
+        setSession(null);
+      }
+    };
+
     const init = async () => {
       try {
-        const session = await db.fetchSessionProfile();
-        if (cancelled) return;
-        setSession(session);
-        if (session) {
-          void loadAllData().catch(() => undefined);
-        }
+        await applyAuthState(true);
       } catch {
-        if (!cancelled) setSession(null);
+        if (!cancelled && !(await hasAuthUser())) setSession(null);
       } finally {
         window.clearTimeout(timeoutId);
         finishInit();
@@ -46,32 +59,44 @@ export function useAppInit() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event) => {
+    } = supabase.auth.onAuthStateChange((event) => {
       if (isAuthSyncPaused()) return;
 
-      if (event === "SIGNED_OUT") {
-        setSession(null);
-        useStore.setState({
-          branches: [],
-          managers: [],
-          students: [],
-          attendance: [],
-          dataLoading: false,
-        });
-      }
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        const profile = await db.fetchSessionProfile();
-        setSession(profile);
-        if (profile) {
-          void loadAllData().catch(() => undefined);
+      void (async () => {
+        if (event === "SIGNED_OUT") {
+          setSession(null);
+          useStore.setState({
+            branches: [],
+            managers: [],
+            students: [],
+            attendance: [],
+            dataLoading: false,
+          });
+          return;
         }
-      }
+
+        if (
+          event === "SIGNED_IN" ||
+          event === "TOKEN_REFRESHED" ||
+          event === "INITIAL_SESSION"
+        ) {
+          const reloadData = event === "SIGNED_IN" || event === "INITIAL_SESSION";
+          await applyAuthState(reloadData);
+        }
+      })();
     });
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || isAuthSyncPaused()) return;
+      void applyAuthState(false);
+    };
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timeoutId);
       subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [setReady, setSession, loadAllData]);
 }
