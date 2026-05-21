@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { AttendanceRecord, Manager, Student, Temple } from "../types";
+import type { AttendanceRecord, Branch, Manager, Student } from "../types";
 import { formatTime } from "./dates";
 import { isDateKeyInRange, parseDateKey } from "./reportRanges";
 
@@ -7,11 +7,11 @@ export function filterAttendance(
   records: AttendanceRecord[],
   from: string,
   to: string,
-  templeId: "all" | string,
+  branchId: "all" | string,
 ): AttendanceRecord[] {
   return records.filter((r) => {
     if (!isDateKeyInRange(r.date, from, to)) return false;
-    if (templeId !== "all" && r.templeId !== templeId) return false;
+    if (branchId !== "all" && r.branchId !== branchId) return false;
     return true;
   });
 }
@@ -30,14 +30,14 @@ export interface ReportRow {
   studentName: string;
   rollNumber: string;
   studentClass: string;
-  templeName: string;
+  branchName: string;
   managerName: string;
 }
 
 export function buildReportRows(
   records: AttendanceRecord[],
   getStudent: (id: string) => Student | undefined,
-  getTemple: (id: string) => Temple | undefined,
+  getBranch: (id: string) => Branch | undefined,
   getManager: (id: string) => Manager | undefined,
 ): ReportRow[] {
   const sorted = [...records].sort((a, b) => {
@@ -46,7 +46,7 @@ export function buildReportRows(
   });
   return sorted.map((r) => {
     const s = getStudent(r.studentId);
-    const t = getTemple(r.templeId);
+    const b = getBranch(r.branchId);
     const m = getManager(r.managerId);
     return {
       date: r.date,
@@ -54,7 +54,7 @@ export function buildReportRows(
       studentName: s?.name ?? "—",
       rollNumber: s?.rollNumber ?? "—",
       studentClass: s?.class ?? "—",
-      templeName: t?.name ?? "—",
+      branchName: b?.name ?? "—",
       managerName: m?.name ?? "—",
     };
   });
@@ -72,7 +72,7 @@ export function reportToCsv(rows: ReportRow[]): string {
     "Student",
     "Roll number",
     "Class",
-    "Temple",
+    "Branch",
     "Manager",
   ];
   const lines = [
@@ -84,7 +84,7 @@ export function reportToCsv(rows: ReportRow[]): string {
         r.studentName,
         r.rollNumber,
         r.studentClass,
-        r.templeName,
+        r.branchName,
         r.managerName,
       ]
         .map((c) => csvEscape(c))

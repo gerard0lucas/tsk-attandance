@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { DEMO_ADMIN, DEFAULT_MANAGER_PASSWORD } from "../lib/auth";
 import type { UserRole } from "../types";
 
 const dashboardPath: Record<UserRole, string> = {
@@ -20,7 +19,7 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
@@ -34,18 +33,20 @@ export function LoginPage() {
       return;
     }
 
-    const result = login(trimmedEmail, trimmedPassword);
-    setLoading(false);
-
-    if (result.ok) {
-      navigate(dashboardPath[result.role], { replace: true });
-    } else {
-      setError(result.message);
+    try {
+      const result = await login(trimmedEmail, trimmedPassword);
+      if (result.ok) {
+        navigate(dashboardPath[result.role], { replace: true });
+      } else {
+        setError(result.message);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-dvh w-full items-center justify-center bg-page px-4 py-8">
+    <div className="flex min-h-dvh w-full items-center justify-center bg-page px-4 py-8 pt-safe pb-safe">
       <div className="mx-auto w-full max-w-sm">
         <div className="mb-6 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-cerulean">TSK Attendance</h1>
@@ -85,32 +86,6 @@ export function LoginPage() {
               {loading ? "Signing in…" : "Sign in"}
             </Button>
           </form>
-
-          <div className="mt-4 space-y-2 border-t border-morning pt-4 text-xs text-mist">
-            <p className="font-medium text-cerulean">Demo accounts (tap to fill)</p>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail(DEMO_ADMIN.email);
-                setPassword(DEMO_ADMIN.password);
-                setError("");
-              }}
-              className="w-full rounded border border-mist/40 bg-morning/40 px-3 py-2.5 text-left text-cerulean hover:bg-morning/70"
-            >
-              Admin — {DEMO_ADMIN.email} / {DEMO_ADMIN.password}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEmail("priya@tsk.org");
-                setPassword(DEFAULT_MANAGER_PASSWORD);
-                setError("");
-              }}
-              className="w-full rounded border border-mist/40 bg-morning/40 px-3 py-2.5 text-left text-cerulean hover:bg-morning/70"
-            >
-              Manager — priya@tsk.org / {DEFAULT_MANAGER_PASSWORD}
-            </button>
-          </div>
         </div>
       </div>
     </div>

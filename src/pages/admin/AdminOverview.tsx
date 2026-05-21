@@ -5,40 +5,40 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { todayKey, formatTime } from "../../lib/dates";
 
 export function AdminOverview() {
-  const temples = useStore((s) => s.temples);
+  const branches = useStore((s) => s.branches);
   const students = useStore((s) => s.students);
   const managers = useStore((s) => s.managers);
   const attendance = useStore((s) => s.attendance);
   const getStudent = useStore((s) => s.getStudent);
-  const getTemple = useStore((s) => s.getTemple);
+  const getBranch = useStore((s) => s.getBranch);
 
   const today = todayKey();
   const todayRecords = attendance.filter((a) => a.date === today);
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <PageHeader title="Overview" subtitle="All temples" />
+      <PageHeader title="Overview" subtitle="All branches" />
 
       <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-        <StatCard label="Temples" value={temples.length} />
+        <StatCard label="Branches" value={branches.length} />
         <StatCard label="Managers" value={managers.length} />
         <StatCard label="Students" value={students.length} />
         <StatCard label="Present today" value={todayRecords.length} />
       </div>
 
       <Card>
-        <h2 className="mb-3 font-medium text-cerulean">Temples today</h2>
+        <h2 className="mb-3 font-medium text-cerulean">Branches today</h2>
         <ul className="space-y-2 text-sm">
-          {temples.map((t) => {
-            const count = students.filter((s) => s.templeId === t.id).length;
-            const present = todayRecords.filter((a) => a.templeId === t.id).length;
+          {branches.map((b) => {
+            const count = students.filter((s) => s.branchId === b.id).length;
+            const present = todayRecords.filter((a) => a.branchId === b.id).length;
             return (
               <li
-                key={t.id}
+                key={b.id}
                 className="flex flex-col gap-1 border-b border-morning py-2 last:border-0 sm:flex-row sm:items-center sm:justify-between"
               >
                 <span className="min-w-0">
-                  <span className="font-medium text-cerulean">{t.name}</span>
+                  <span className="font-medium text-cerulean">{b.name}</span>
                   <span className="block text-mist sm:inline sm:before:content-['·'] sm:before:mx-1">
                     {count} students
                   </span>
@@ -68,7 +68,7 @@ export function AdminOverview() {
                     {getStudent(r.studentId)?.name}
                   </span>
                   <span className="text-mist">
-                    {getTemple(r.templeId)?.name} · {formatTime(r.markedAt)}
+                    {getBranch(r.branchId)?.name} · {formatTime(r.markedAt)}
                   </span>
                 </li>
               ))}

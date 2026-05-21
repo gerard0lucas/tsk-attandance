@@ -1,0 +1,167 @@
+-- TSK Attendance — run in Supabase SQL Editor (Dashboard → SQL → New query)
+
+-- Extensions
+create extension if not exists "pgcrypto";
+
+-- Profiles (linked to Supabase Auth users)
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null,
+  name text not null,
+  role text not null check (role in ('admin', 'manager')),
+  created_at timestamptz not null default now()
+);
+
+-- Branches
+create table if not exists public.branches (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  location text not null default '',
+  created_at timestamptz not null default now()
+);
+
+-- Students
+create table if not exists public.students (
+  id uuid primary key default gen_random_uuid(),
+  branch_id uuid not null references public.branches (id) on delete cascade,
+  name text not null,
+  roll_number text not null,
+  class text not null,
+  gender text not null check (gender in ('male', 'female', 'other')),
+  photo_url text,
+  qr_token text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists students_branch_id_idx on public.students (branch_id);
+create index if not exists students_qr_token_idx on public.students (qr_token);
+
+-- Attendance (one check-in per student per calendar day)
+create table if not exists public.attendance (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students (id) on delete cascade,
+  branch_id uuid not null references public.branches (id) on delete cascade,
+  manager_id uuid not null references public.profiles (id) on delete restrict,
+  date text not null,
+  marked_at timestamptz not null default now(),
+  unique (student_id, date)
+);
+
+create index if not exists attendance_branch_date_idx on public.attendance (branch_id, date);
+
+-- Auto-create profile on signup (managers created from admin UI)
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, email, name, role)
+  values (
+    new.id,
+    coalesce(new.email, ''),
+    coalesce(new.raw_user_meta_data ->> 'name', split_part(coalesce(new.email, 'user'), '@', 1)),
+    coalesce(new.raw_user_meta_data ->> 'role', 'manager')
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- Helper: current user's role
+create or replace function public.current_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select role from public.profiles where id = auth.uid();
+$$;
+
+-- RLS
+alter table public.profiles enable row level security;
+alter table public.branches enable row level security;
+alter table public.students enable row level security;
+alter table public.attendance enable row level security;
+
+-- Profiles
+create policy "profiles_select_authenticated"
+  on public.profiles for select to authenticated using (true);
+
+create policy "profiles_insert_admin"
+  on public.profiles for insert to authenticated
+  with check (public.current_role() = 'admin');
+
+create policy "profiles_update_admin"
+  on public.profiles for update to authenticated
+  using (public.current_role() = 'admin');
+
+create policy "profiles_delete_admin"
+  on public.profiles for delete to authenticated
+  using (public.current_role() = 'admin');
+
+create policy "profiles_update_self"
+  on public.profiles for update to authenticated
+  using (id = auth.uid());
+
+-- Branches
+create policy "branches_select_authenticated"
+  on public.branches for select to authenticated using (true);
+
+create policy "branches_write_admin"
+  on public.branches for all to authenticated
+  using (public.current_role() = 'admin')
+  with check (public.current_role() = 'admin');
+
+-- Students
+create policy "students_select_authenticated"
+  on public.students for select to authenticated using (true);
+
+create policy "students_write_authenticated"
+  on public.students for insert to authenticated with check (true);
+
+create policy "students_update_authenticated"
+  on public.students for update to authenticated using (true);
+
+create policy "students_delete_admin"
+  on public.students for delete to authenticated
+  using (public.current_role() = 'admin');
+
+-- Attendance
+create policy "attendance_select_authenticated"
+  on public.attendance for select to authenticated using (true);
+
+create policy "attendance_insert_authenticated"
+  on public.attendance for insert to authenticated with check (manager_id = auth.uid());
+
+-- Storage bucket for student photos (public read)
+insert into storage.buckets (id, name, public)
+values ('student-photos', 'student-photos', true)
+on conflict (id) do nothing;
+
+create policy "student_photos_read"
+  on storage.objects for select to authenticated
+  using (bucket_id = 'student-photos');
+
+create policy "student_photos_write"
+  on storage.objects for insert to authenticated
+  with check (bucket_id = 'student-photos');
+
+create policy "student_photos_update"
+  on storage.objects for update to authenticated
+  using (bucket_id = 'student-photos');
+
+create policy "student_photos_delete"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'student-photos');
+
+-- After creating your first admin user in Authentication → Users, run:
+-- insert into public.profiles (id, email, name, role)
+-- values ('YOUR_USER_UUID', 'admin@tsk.org', 'System Administrator', 'admin');

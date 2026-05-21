@@ -1,7 +1,14 @@
 import type { ReactNode } from "react";
 
-export function TableWrap({ children }: { children: ReactNode }) {
-  return <div className="-mx-1 overflow-x-auto px-1">{children}</div>;
+export function TableWrap({ children, hint }: { children: ReactNode; hint?: boolean }) {
+  return (
+    <div className="space-y-2">
+      {hint !== false && (
+        <p className="text-xs text-mist md:hidden">Swipe sideways to see all columns →</p>
+      )}
+      <div className="-mx-1 overflow-x-auto scroll-hint px-1 pb-1">{children}</div>
+    </div>
+  );
 }
 
 export const tableHeadCell = "px-3 py-3 align-middle font-medium text-mist";

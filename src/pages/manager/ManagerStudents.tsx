@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { Button } from "../../components/ui/Button";
 import { CardRow } from "../../components/ui/Card";
@@ -8,48 +9,93 @@ import { Modal } from "../../components/ui/Modal";
 import { Badge } from "../../components/ui/Badge";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
-import { QrDisplay } from "../../components/QrDisplay";
+import { PhotoUpload } from "../../components/PhotoUpload";
+import { StudentPhoto } from "../../components/StudentPhoto";
 import { formatGender, GENDER_OPTIONS } from "../../lib/student";
-import type { Gender } from "../../types";
+import type { Gender, Student } from "../../types";
 
 export function ManagerStudents() {
-  const temples = useStore((s) => s.temples);
+  const navigate = useNavigate();
+  const branches = useStore((s) => s.branches);
   const students = useStore((s) => s.students);
-  const getTemple = useStore((s) => s.getTemple);
+  const getBranch = useStore((s) => s.getBranch);
   const addStudent = useStore((s) => s.addStudent);
+  const updateStudent = useStore((s) => s.updateStudent);
   const regenerateQr = useStore((s) => s.regenerateQr);
   const isPresentToday = useStore((s) => s.isPresentToday);
 
-  const [open, setOpen] = useState(false);
-  const [qrId, setQrId] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Student | null>(null);
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("male");
-  const [templeId, setTempleId] = useState(temples[0]?.id ?? "");
+  const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
+  const [photo, setPhoto] = useState<string | undefined>();
 
-  const qrStudent = qrId ? students.find((s) => s.id === qrId) : null;
+  const openQr = (studentId: string) => {
+    navigate(`/manager/students/${studentId}/qr`);
+  };
 
   const resetForm = () => {
     setName("");
     setRollNumber("");
     setStudentClass("");
     setGender("male");
-    setTempleId(temples[0]?.id ?? "");
+    setBranchId(branches[0]?.id ?? "");
+    setPhoto(undefined);
+    setEditing(null);
   };
 
-  const create = () => {
-    if (!name.trim() || !rollNumber.trim() || !studentClass.trim() || !templeId) return;
-    const student = addStudent({
-      templeId,
-      name: name.trim(),
-      rollNumber: rollNumber.trim(),
-      class: studentClass.trim(),
-      gender,
-    });
+  const closeForm = () => {
+    setFormOpen(false);
     resetForm();
-    setOpen(false);
-    setQrId(student.id);
+  };
+
+  const openAdd = () => {
+    resetForm();
+    setFormOpen(true);
+  };
+
+  const openEdit = (s: Student) => {
+    setEditing(s);
+    setName(s.name);
+    setRollNumber(s.rollNumber);
+    setStudentClass(s.class);
+    setGender(s.gender);
+    setBranchId(s.branchId);
+    setPhoto(s.photo);
+    setFormOpen(true);
+  };
+
+  const save = async () => {
+    if (!name.trim() || !rollNumber.trim() || !studentClass.trim() || !branchId) return;
+    try {
+      if (editing) {
+        await updateStudent(editing.id, {
+          branchId,
+          name: name.trim(),
+          rollNumber: rollNumber.trim(),
+          class: studentClass.trim(),
+          gender,
+          photo: photo || undefined,
+        });
+        closeForm();
+      } else {
+        const student = await addStudent({
+          branchId,
+          name: name.trim(),
+          rollNumber: rollNumber.trim(),
+          class: studentClass.trim(),
+          gender,
+          photo,
+        });
+        closeForm();
+        navigate(`/manager/students/${student.id}/qr`);
+      }
+    } catch {
+      /* store sets actionError */
+    }
   };
 
   return (
@@ -57,19 +103,19 @@ export function ManagerStudents() {
       <PageHeader
         title="Students"
         action={
-          <Button onClick={() => setOpen(true)} disabled={temples.length === 0}>
+          <Button onClick={openAdd} disabled={branches.length === 0}>
             Add student
           </Button>
         }
       />
 
-      {temples.length === 0 && (
-        <p className="text-sm text-mist">No temples yet. Ask admin to add temples first.</p>
+      {branches.length === 0 && (
+        <p className="text-sm text-mist">No branches yet. Ask admin to add branches first.</p>
       )}
 
       <div className="space-y-3">
         {students.map((s) => {
-          const templeName = getTemple(s.templeId)?.name ?? "—";
+          const branchName = getBranch(s.branchId)?.name ?? "—";
           return (
             <CardRow
               key={s.id}
@@ -79,9 +125,17 @@ export function ManagerStudents() {
                     variant="outline"
                     size="sm"
                     className="flex-1 sm:flex-none"
-                    onClick={() => setQrId(s.id)}
+                    onClick={() => openEdit(s)}
                   >
-                    View QR
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 sm:flex-none"
+                    onClick={() => openQr(s.id)}
+                  >
+                    QR
                   </Button>
                   <Button
                     variant="ghost"
@@ -89,8 +143,8 @@ export function ManagerStudents() {
                     className="flex-1 sm:flex-none"
                     onClick={() => {
                       if (confirm("New QR code? Old one stops working.")) {
-                        regenerateQr(s.id);
-                        setQrId(s.id);
+                        void regenerateQr(s.id);
+                        openQr(s.id);
                       }
                     }}
                   >
@@ -99,16 +153,21 @@ export function ManagerStudents() {
                 </>
               }
             >
-              <p className="font-medium text-cerulean">{s.name}</p>
-              <p className="text-sm text-mist">Roll: {s.rollNumber} · Class: {s.class}</p>
-              <p className="text-sm text-mist">Gender: {formatGender(s.gender)}</p>
-              <p className="text-sm text-mist">Temple: {templeName}</p>
-              <div className="mt-2">
-                {isPresentToday(s.id) ? (
-                  <Badge tone="success">Present today</Badge>
-                ) : (
-                  <Badge tone="neutral">Not checked in</Badge>
-                )}
+              <div className="flex gap-3">
+                <StudentPhoto student={s} size="md" />
+                <div className="min-w-0">
+                  <p className="font-medium text-cerulean">{s.name}</p>
+                  <p className="text-sm text-mist">Roll: {s.rollNumber} · Class: {s.class}</p>
+                  <p className="text-sm text-mist">Gender: {formatGender(s.gender)}</p>
+                  <p className="text-sm text-mist">Branch: {branchName}</p>
+                  <div className="mt-2">
+                    {isPresentToday(s.id) ? (
+                      <Badge tone="success">Present today</Badge>
+                    ) : (
+                      <Badge tone="neutral">Not checked in</Badge>
+                    )}
+                  </div>
+                </div>
               </div>
             </CardRow>
           );
@@ -116,20 +175,38 @@ export function ManagerStudents() {
         {students.length === 0 && <p className="text-sm text-mist">No students yet.</p>}
       </div>
 
-      <Modal open={open} onClose={() => { setOpen(false); resetForm(); }} title="New student">
+      <Modal
+        open={formOpen}
+        onClose={closeForm}
+        title={editing ? "Edit student" : "New student"}
+        wide
+        footer={
+          <FormActions>
+            <Button variant="outline" onClick={closeForm}>
+              Cancel
+            </Button>
+            <Button onClick={() => void save()} disabled={!branchId}>
+              {editing ? "Save changes" : "Create & show QR"}
+            </Button>
+          </FormActions>
+        }
+      >
         <FormStack>
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
+          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input
             label="Roll number"
             value={rollNumber}
             onChange={(e) => setRollNumber(e.target.value)}
             placeholder="e.g. NV-003"
+            required
           />
           <Input
             label="Class"
             value={studentClass}
             onChange={(e) => setStudentClass(e.target.value)}
             placeholder="e.g. 10-A"
+            required
           />
           <Select
             label="Gender"
@@ -138,27 +215,14 @@ export function ManagerStudents() {
             options={GENDER_OPTIONS.map((g) => ({ value: g.value, label: g.label }))}
           />
           <Select
-            label="Temple"
-            value={templeId}
-            onChange={(e) => setTempleId(e.target.value)}
-            options={temples.map((t) => ({ value: t.id, label: t.name }))}
+            label="Branch"
+            value={branchId}
+            onChange={(e) => setBranchId(e.target.value)}
+            options={branches.map((b) => ({ value: b.id, label: b.name }))}
           />
-          <FormActions>
-            <Button onClick={create} className="w-full" disabled={!templeId}>
-              Create & show QR
-            </Button>
-          </FormActions>
         </FormStack>
       </Modal>
 
-      <Modal open={!!qrStudent} onClose={() => setQrId(null)} title="Student QR" wide>
-        {qrStudent && (
-          <QrDisplay
-            student={qrStudent}
-            templeName={getTemple(qrStudent.templeId)?.name}
-          />
-        )}
-      </Modal>
     </div>
   );
 }

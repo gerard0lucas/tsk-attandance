@@ -7,7 +7,7 @@ import { Button } from "../ui/Button";
 
 const adminNav = [
   { to: "/admin", label: "Overview", end: true },
-  { to: "/admin/temples", label: "Temples" },
+  { to: "/admin/branches", label: "Branches" },
   { to: "/admin/managers", label: "Managers" },
   { to: "/admin/students", label: "Students" },
   { to: "/admin/reports", label: "Reports" },
@@ -50,6 +50,8 @@ function NavItems({
 
 export function DashboardLayout({ role }: { role: UserRole }) {
   const session = useStore((s) => s.session);
+  const dataLoading = useStore((s) => s.dataLoading);
+  const actionError = useStore((s) => s.actionError);
   const logout = useStore((s) => s.logout);
   const navigate = useNavigate();
   const location = useLocation();
@@ -70,15 +72,14 @@ export function DashboardLayout({ role }: { role: UserRole }) {
   }, [menuOpen]);
 
   const signOut = () => {
-    logout();
-    navigate("/");
+    void logout().then(() => navigate("/"));
   };
 
   const sideLinkClass =
     "flex items-center rounded px-3 py-2.5 text-sm text-morning hover:bg-white/10 min-h-[44px]";
 
   const bottomLinkClass =
-    "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-xs text-morning min-h-[56px]";
+    "touch-target flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-2 text-[10px] leading-tight text-morning min-h-[56px] sm:text-xs";
 
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
@@ -163,7 +164,7 @@ export function DashboardLayout({ role }: { role: UserRole }) {
       </aside>
 
       {/* Mobile bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-mist/30 bg-cerulean lg:hidden pb-safe">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-mist/30 bg-cerulean px-safe lg:hidden pb-safe">
         {nav.map(({ to, label, end }) => (
           <NavLink
             key={to}
@@ -173,13 +174,23 @@ export function DashboardLayout({ role }: { role: UserRole }) {
               `${bottomLinkClass} ${isActive ? "bg-black/20 font-medium text-honey" : ""}`
             }
           >
-            {label}
+            <span className="max-w-full truncate text-center">{label}</span>
           </NavLink>
         ))}
       </nav>
 
-      <main className="flex-1 overflow-x-hidden bg-page p-4 pb-24 lg:p-6 lg:pb-6">
+      <main className="flex-1 overflow-x-hidden bg-page px-4 py-4 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] pt-2 lg:p-6 lg:pb-6">
         <div className="mx-auto w-full max-w-4xl">
+          {dataLoading && (
+            <p className="mb-4 rounded border border-morning bg-white px-3 py-2 text-sm text-mist">
+              Syncing data…
+            </p>
+          )}
+          {actionError && !dataLoading && (
+            <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {actionError}
+            </p>
+          )}
           <Outlet />
         </div>
       </main>

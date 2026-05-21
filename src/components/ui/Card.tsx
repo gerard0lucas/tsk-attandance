@@ -36,7 +36,7 @@ export function CardRow({
     <Card className={`flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between ${className}`}>
       <div className="min-w-0 flex-1">{children}</div>
       {actions && (
-        <div className="flex w-full shrink-0 gap-2 sm:w-auto [&>button]:min-w-0 sm:[&>button]:min-w-[5rem]">
+        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap [&>button]:min-h-[44px] [&>button]:w-full sm:[&>button]:w-auto sm:[&>button]:min-w-[5rem]">
           {actions}
         </div>
       )}

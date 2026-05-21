@@ -22,6 +22,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Select } from "../components/ui/Select";
+import { MobileCard, MobileCardRow } from "../components/ui/MobileCard";
 import { TableWrap, tableCell, tableCellMuted, tableHeadCell } from "../components/ui/TableWrap";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -29,15 +30,15 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export function ReportsPage() {
   const attendance = useStore((s) => s.attendance);
   const students = useStore((s) => s.students);
-  const temples = useStore((s) => s.temples);
+  const branches = useStore((s) => s.branches);
   const getStudent = useStore((s) => s.getStudent);
-  const getTemple = useStore((s) => s.getTemple);
+  const getBranch = useStore((s) => s.getBranch);
   const getManager = useStore((s) => s.getManager);
 
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(() => todayKey());
   const [period, setPeriod] = useState<ReportPeriod>("daily");
-  const [templeFilter, setTempleFilter] = useState<"all" | string>("all");
+  const [branchFilter, setBranchFilter] = useState<"all" | string>("all");
 
   const { from, to, label } = useMemo(
     () => periodRange(period, selectedDateKey),
@@ -45,19 +46,19 @@ export function ReportsPage() {
   );
 
   const periodRecords = useMemo(
-    () => filterAttendance(attendance, from, to, templeFilter),
-    [attendance, from, to, templeFilter],
+    () => filterAttendance(attendance, from, to, branchFilter),
+    [attendance, from, to, branchFilter],
   );
 
   const rows = useMemo(
-    () => buildReportRows(periodRecords, getStudent, getTemple, getManager),
-    [periodRecords, getStudent, getTemple, getManager],
+    () => buildReportRows(periodRecords, getStudent, getBranch, getManager),
+    [periodRecords, getStudent, getBranch, getManager],
   );
 
   const activeStudentsInScope = useMemo(() => {
-    if (templeFilter === "all") return students.filter((s) => s.active).length;
-    return students.filter((s) => s.active && s.templeId === templeFilter).length;
-  }, [students, templeFilter]);
+    if (branchFilter === "all") return students.filter((s) => s.active).length;
+    return students.filter((s) => s.active && s.branchId === branchFilter).length;
+  }, [students, branchFilter]);
 
   const stats = useMemo(
     () => summaryStats(periodRecords, activeStudentsInScope),
@@ -68,8 +69,8 @@ export function ReportsPage() {
   const gridFrom = toDateKey(gridDays[0]!);
   const gridTo = toDateKey(gridDays[gridDays.length - 1]!);
   const monthAttendance = useMemo(
-    () => filterAttendance(attendance, gridFrom, gridTo, templeFilter),
-    [attendance, gridFrom, gridTo, templeFilter],
+    () => filterAttendance(attendance, gridFrom, gridTo, branchFilter),
+    [attendance, gridFrom, gridTo, branchFilter],
   );
   const dayCounts = useMemo(() => countByDate(monthAttendance), [monthAttendance]);
 
@@ -120,7 +121,7 @@ export function ReportsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-mist sm:text-sm">
+        <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-medium text-mist sm:gap-1 sm:text-sm">
           {WEEKDAYS.map((d) => (
             <div key={d} className="py-1">
               {d}
@@ -163,12 +164,12 @@ export function ReportsPage() {
           })}
         </div>
         <p className="mt-3 text-xs text-mist">
-          Tap a day to select it. Small numbers are check-in counts for that day (temple filter applies).
+          Tap a day to select it. Small numbers are check-in counts for that day (branch filter applies).
         </p>
       </Card>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+        <div className="grid grid-cols-3 gap-2">
           {(
             [
               { id: "daily" as const, label: "Daily" },
@@ -181,6 +182,7 @@ export function ReportsPage() {
               type="button"
               variant={period === id ? "primary" : "outline"}
               size="sm"
+              className="w-full"
               onClick={() => setPeriod(id)}
             >
               {lbl}
@@ -190,9 +192,8 @@ export function ReportsPage() {
         <Button
           type="button"
           variant="secondary"
-          size="sm"
           onClick={downloadCsv}
-          className="inline-flex w-full items-center justify-center gap-2 sm:w-auto"
+          className="inline-flex w-full items-center justify-center gap-2"
         >
           <Download className="h-4 w-4 shrink-0" />
           Download CSV
@@ -200,12 +201,12 @@ export function ReportsPage() {
       </div>
 
       <Select
-        label="Temple"
-        value={templeFilter}
-        onChange={(e) => setTempleFilter(e.target.value as "all" | string)}
+        label="Branch"
+        value={branchFilter}
+        onChange={(e) => setBranchFilter(e.target.value as "all" | string)}
         options={[
-          { value: "all", label: "All temples" },
-          ...temples.map((t) => ({ value: t.id, label: t.name })),
+          { value: "all", label: "All branches" },
+          ...branches.map((b) => ({ value: b.id, label: b.name })),
         ]}
       />
 
@@ -241,40 +242,61 @@ export function ReportsPage() {
 
       <Card padding="sm">
         <h2 className="mb-3 px-1 font-medium text-cerulean">Detail</h2>
-        <TableWrap>
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="border-b border-morning">
-                <th className={tableHeadCell}>Date</th>
-                <th className={tableHeadCell}>Time</th>
-                <th className={tableHeadCell}>Student</th>
-                <th className={tableHeadCell}>Roll</th>
-                <th className={tableHeadCell}>Class</th>
-                <th className={tableHeadCell}>Temple</th>
-                <th className={tableHeadCell}>Manager</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={`${r.date}-${r.time}-${r.rollNumber}-${i}`}
-                  className="border-b border-morning last:border-0"
-                >
-                  <td className={tableCellMuted}>{formatReportDate(r.date)}</td>
-                  <td className={tableCellMuted}>{r.time}</td>
-                  <td className={tableCell}>{r.studentName}</td>
-                  <td className={tableCellMuted}>{r.rollNumber}</td>
-                  <td className={tableCellMuted}>{r.studentClass}</td>
-                  <td className={tableCellMuted}>{r.templeName}</td>
-                  <td className={tableCellMuted}>{r.managerName}</td>
+
+        <div className="space-y-3 md:hidden">
+          {rows.map((r, i) => (
+            <MobileCard
+              key={`${r.date}-${r.time}-${r.rollNumber}-${i}`}
+              title={r.studentName}
+              subtitle={`${formatReportDate(r.date)} · ${r.time}`}
+            >
+              <MobileCardRow label="Roll" value={r.rollNumber} />
+              <MobileCardRow label="Class" value={r.studentClass} />
+              <MobileCardRow label="Branch" value={r.branchName} />
+              <MobileCardRow label="Manager" value={r.managerName} />
+            </MobileCard>
+          ))}
+          {rows.length === 0 && (
+            <p className="py-4 text-center text-sm text-mist">No check-ins in this range.</p>
+          )}
+        </div>
+
+        <div className="hidden md:block">
+          <TableWrap>
+            <table className="w-full min-w-[640px]">
+              <thead>
+                <tr className="border-b border-morning">
+                  <th className={tableHeadCell}>Date</th>
+                  <th className={tableHeadCell}>Time</th>
+                  <th className={tableHeadCell}>Student</th>
+                  <th className={tableHeadCell}>Roll</th>
+                  <th className={tableHeadCell}>Class</th>
+                  <th className={tableHeadCell}>Branch</th>
+                  <th className={tableHeadCell}>Manager</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-        {rows.length === 0 && (
-          <p className="px-1 py-4 text-center text-sm text-mist">No check-ins in this range.</p>
-        )}
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr
+                    key={`${r.date}-${r.time}-${r.rollNumber}-${i}`}
+                    className="border-b border-morning last:border-0"
+                  >
+                    <td className={tableCellMuted}>{formatReportDate(r.date)}</td>
+                    <td className={tableCellMuted}>{r.time}</td>
+                    <td className={tableCell}>{r.studentName}</td>
+                    <td className={tableCellMuted}>{r.rollNumber}</td>
+                    <td className={tableCellMuted}>{r.studentClass}</td>
+                    <td className={tableCellMuted}>{r.branchName}</td>
+                    <td className={tableCellMuted}>{r.managerName}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+          {rows.length === 0 && (
+            <p className="px-1 py-4 text-center text-sm text-mist">No check-ins in this range.</p>
+          )}
+        </div>
       </Card>
     </div>
   );

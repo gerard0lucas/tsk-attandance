@@ -13,11 +13,11 @@ import {
   tableHeadCell,
 } from "../../components/ui/TableWrap";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
-import { DEFAULT_MANAGER_PASSWORD } from "../../lib/auth";
 import type { Manager } from "../../types";
 
 export function AdminManagers() {
   const managers = useStore((s) => s.managers);
+  const actionError = useStore((s) => s.actionError);
   const addManager = useStore((s) => s.addManager);
   const updateManager = useStore((s) => s.updateManager);
   const deleteManager = useStore((s) => s.deleteManager);
@@ -27,6 +27,7 @@ export function AdminManagers() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const reset = () => {
     setName("");
@@ -35,25 +36,30 @@ export function AdminManagers() {
     setEditing(null);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!name.trim() || !email.trim()) return;
-    if (editing) {
-      const updates: Partial<Omit<Manager, "id" | "createdAt">> = {
-        name: name.trim(),
-        email: email.trim(),
-      };
-      if (password.trim()) updates.password = password.trim();
-      updateManager(editing.id, updates);
-    } else {
-      if (!password.trim()) return;
-      addManager({
-        name: name.trim(),
-        email: email.trim(),
-        password: password.trim(),
-      });
+    setSaving(true);
+    try {
+      if (editing) {
+        await updateManager(editing.id, {
+          name: name.trim(),
+          email: email.trim(),
+        });
+      } else {
+        if (!password.trim()) return;
+        await addManager({
+          name: name.trim(),
+          email: email.trim(),
+          password: password.trim(),
+        });
+      }
+      setOpen(false);
+      reset();
+    } catch {
+      /* actionError in store */
+    } finally {
+      setSaving(false);
     }
-    setOpen(false);
-    reset();
   };
 
   const openEdit = (m: Manager) => {
@@ -75,6 +81,12 @@ export function AdminManagers() {
         }
       />
 
+      {actionError && (
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {actionError}
+        </p>
+      )}
+
       <div className="space-y-3 md:hidden">
         {managers.map((m) => (
           <CardRow
@@ -94,7 +106,7 @@ export function AdminManagers() {
                   size="sm"
                   className="flex-1 sm:flex-none"
                   onClick={() => {
-                    if (confirm(`Remove ${m.name}?`)) deleteManager(m.id);
+                    if (confirm(`Remove ${m.name}?`)) void deleteManager(m.id);
                   }}
                 >
                   Delete
@@ -133,7 +145,7 @@ export function AdminManagers() {
                       size="sm"
                       className="ml-2"
                       onClick={() => {
-                        if (confirm(`Remove ${m.name}?`)) deleteManager(m.id);
+                        if (confirm(`Remove ${m.name}?`)) void deleteManager(m.id);
                       }}
                     >
                       Delete
@@ -147,26 +159,39 @@ export function AdminManagers() {
         {managers.length === 0 && <p className="text-sm text-mist">No managers yet.</p>}
       </Card>
 
-      <Modal open={open} onClose={() => { setOpen(false); reset(); }} title={editing ? "Edit manager" : "New manager"}>
-        <FormStack>
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <div className="flex flex-col gap-2">
-            <Input
-              label={editing ? "New password (optional)" : "Password"}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={editing ? "Leave blank to keep current" : "Enter password"}
-              required={!editing}
-            />
-            {!editing && (
-              <p className="text-xs text-mist">Demo default: {DEFAULT_MANAGER_PASSWORD}</p>
-            )}
-          </div>
+      <Modal
+        open={open}
+        onClose={() => { setOpen(false); reset(); }}
+        title={editing ? "Edit manager" : "New manager"}
+        footer={
           <FormActions>
-            <Button onClick={save} className="w-full">{editing ? "Save" : "Create"}</Button>
+            <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>
+              Cancel
+            </Button>
+            <Button onClick={() => void save()} disabled={saving}>
+              {saving ? "Saving…" : editing ? "Save" : "Create"}
+            </Button>
           </FormActions>
+        }
+      >
+        <FormStack>
+          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          {!editing && (
+            <>
+              <Input
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Login password for this manager"
+                required
+              />
+              <p className="text-xs leading-relaxed text-mist">
+                In Supabase, turn off Authentication → Email → Confirm email so no verification emails are sent.
+              </p>
+            </>
+          )}
         </FormStack>
       </Modal>
     </div>

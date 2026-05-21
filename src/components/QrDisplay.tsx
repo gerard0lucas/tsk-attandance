@@ -3,15 +3,20 @@ import { buildQrPayload } from "../lib/qr";
 import { formatGender } from "../lib/student";
 import type { Student } from "../types";
 import { Button } from "./ui/Button";
+import { StudentPhoto } from "./StudentPhoto";
+
+const QR_SIZE_DEFAULT = 168;
+const QR_SIZE_PAGE = 220;
 
 interface QrDisplayProps {
   student: Student;
-  templeName?: string;
-  size?: number;
+  branchName?: string;
+  variant?: "default" | "page";
 }
 
-export function QrDisplay({ student, templeName, size }: QrDisplayProps) {
-  const qrSize = size ?? Math.min(220, typeof window !== "undefined" ? window.innerWidth - 96 : 220);
+export function QrDisplay({ student, branchName, variant = "default" }: QrDisplayProps) {
+  const isPage = variant === "page";
+  const qrSize = isPage ? QR_SIZE_PAGE : QR_SIZE_DEFAULT;
   const value = buildQrPayload(student);
 
   const download = () => {
@@ -36,29 +41,54 @@ export function QrDisplay({ student, templeName, size }: QrDisplayProps) {
   };
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="flex w-full justify-center">
-        <div className="inline-flex rounded border border-morning bg-white p-3">
+    <div className={isPage ? "space-y-6" : "space-y-5"}>
+      <div className="flex items-start gap-4 rounded-lg border border-morning bg-page/60 p-4">
+        <StudentPhoto student={student} size={isPage ? "lg" : "md"} />
+        <dl className="min-w-0 flex-1 text-sm">
+          <dt className="sr-only">Name</dt>
+          <dd className={`font-semibold text-cerulean ${isPage ? "text-lg" : "text-base"}`}>
+            {student.name}
+          </dd>
+          <div className="mt-3 grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1.5 text-mist">
+            <dt>Roll</dt>
+            <dd className="text-cerulean">{student.rollNumber}</dd>
+            <dt>Class</dt>
+            <dd className="text-cerulean">{student.class}</dd>
+            <dt>Gender</dt>
+            <dd className="text-cerulean">{formatGender(student.gender)}</dd>
+            {branchName && (
+              <>
+                <dt>Branch</dt>
+                <dd className="text-cerulean">{branchName}</dd>
+              </>
+            )}
+          </div>
+        </dl>
+      </div>
+
+      <div className="flex flex-col items-center gap-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-mist">Attendance QR</p>
+        <div className="rounded-lg border border-morning bg-white p-4 shadow-sm">
           <QRCodeSVG
             id={`qr-${student.id}`}
             value={value}
             size={qrSize}
             level="H"
-            includeMargin
-            className="h-auto max-w-full"
+            includeMargin={false}
           />
         </div>
+        <p className="max-w-sm text-center text-sm text-mist">
+          Print or download for the student. Managers scan this at check-in.
+        </p>
+        <Button
+          variant={isPage ? "primary" : "outline"}
+          size={isPage ? "lg" : "md"}
+          onClick={download}
+          className="w-full max-w-md"
+        >
+          Download QR
+        </Button>
       </div>
-      <div className="w-full space-y-0.5 text-center text-sm text-mist">
-        <p className="font-medium text-cerulean">{student.name}</p>
-        <p>Roll: {student.rollNumber}</p>
-        <p>Class: {student.class}</p>
-        <p>Gender: {formatGender(student.gender)}</p>
-        {templeName && <p>Temple: {templeName}</p>}
-      </div>
-      <Button variant="outline" size="sm" onClick={download} className="w-full max-w-xs">
-        Download QR
-      </Button>
     </div>
   );
 }
