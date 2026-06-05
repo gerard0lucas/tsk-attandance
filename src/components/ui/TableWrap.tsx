@@ -6,7 +6,7 @@ export function TableWrap({ children, hint }: { children: ReactNode; hint?: bool
       {hint !== false && (
         <p className="text-xs text-mist md:hidden">Swipe sideways to see all columns →</p>
       )}
-      <div className="-mx-1 overflow-x-auto scroll-hint px-1 pb-1">{children}</div>
+      <div className="table-scroll -mx-1 scroll-hint px-1 pb-1">{children}</div>
     </div>
   );
 }

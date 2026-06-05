@@ -46,7 +46,16 @@ export function useAppInit() {
 
     const init = async () => {
       try {
-        await applyAuthState(true);
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+        if (error && /refresh token/i.test(error.message)) {
+          await supabase.auth.signOut();
+          setSession(null);
+        } else if (session) {
+          await applyAuthState(true);
+        }
       } catch {
         if (!cancelled && !(await hasAuthUser())) setSession(null);
       } finally {

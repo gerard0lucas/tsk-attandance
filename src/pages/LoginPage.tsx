@@ -9,6 +9,7 @@ import type { UserRole } from "../types";
 const dashboardPath: Record<UserRole, string> = {
   admin: "/admin",
   manager: "/manager",
+  user: "/user",
 };
 
 export function LoginPage() {

@@ -3,20 +3,21 @@
 -- Extensions
 create extension if not exists "pgcrypto";
 
+-- Branches (must exist before profiles.branch_id)
+create table if not exists public.branches (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  location text not null default '',
+  created_at timestamptz not null default now()
+);
+
 -- Profiles (linked to Supabase Auth users)
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text not null,
   name text not null,
-  role text not null check (role in ('admin', 'manager')),
-  created_at timestamptz not null default now()
-);
-
--- Branches
-create table if not exists public.branches (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  location text not null default '',
+  role text not null check (role in ('admin', 'manager', 'user')),
+  branch_id uuid references public.branches (id) on delete set null,
   created_at timestamptz not null default now()
 );
 
@@ -50,7 +51,7 @@ create table if not exists public.attendance (
 
 create index if not exists attendance_branch_date_idx on public.attendance (branch_id, date);
 
--- Auto-create profile on signup (managers created from admin UI)
+-- Auto-create profile on signup (managers/users created from admin/manager UI)
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -58,12 +59,13 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, name, role)
+  insert into public.profiles (id, email, name, role, branch_id)
   values (
     new.id,
     coalesce(new.email, ''),
     coalesce(new.raw_user_meta_data ->> 'name', split_part(coalesce(new.email, 'user'), '@', 1)),
-    coalesce(new.raw_user_meta_data ->> 'role', 'manager')
+    coalesce(new.raw_user_meta_data ->> 'role', 'manager'),
+    nullif(new.raw_user_meta_data ->> 'branch_id', '')::uuid
   );
   return new;
 end;
@@ -74,7 +76,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Helper: current user's role
+-- Helpers: current user's role and branch
 create or replace function public.current_role()
 returns text
 language sql
@@ -83,6 +85,16 @@ security definer
 set search_path = public
 as $$
   select role from public.profiles where id = auth.uid();
+$$;
+
+create or replace function public.current_branch_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select branch_id from public.profiles where id = auth.uid();
 $$;
 
 -- RLS
@@ -99,13 +111,37 @@ create policy "profiles_insert_admin"
   on public.profiles for insert to authenticated
   with check (public.current_role() = 'admin');
 
+create policy "profiles_insert_manager_users"
+  on public.profiles for insert to authenticated
+  with check (
+    public.current_role() = 'manager'
+    and role = 'user'
+    and branch_id = public.current_branch_id()
+  );
+
 create policy "profiles_update_admin"
   on public.profiles for update to authenticated
   using (public.current_role() = 'admin');
 
+create policy "profiles_update_manager_users"
+  on public.profiles for update to authenticated
+  using (
+    public.current_role() = 'manager'
+    and role = 'user'
+    and branch_id = public.current_branch_id()
+  );
+
 create policy "profiles_delete_admin"
   on public.profiles for delete to authenticated
   using (public.current_role() = 'admin');
+
+create policy "profiles_delete_manager_users"
+  on public.profiles for delete to authenticated
+  using (
+    public.current_role() = 'manager'
+    and role = 'user'
+    and branch_id = public.current_branch_id()
+  );
 
 create policy "profiles_update_self"
   on public.profiles for update to authenticated
@@ -134,12 +170,48 @@ create policy "students_delete_admin"
   on public.students for delete to authenticated
   using (public.current_role() = 'admin');
 
+create policy "students_delete_branch_staff"
+  on public.students for delete to authenticated
+  using (
+    public.current_role() in ('manager', 'user')
+    and branch_id = public.current_branch_id()
+  );
+
 -- Attendance
 create policy "attendance_select_authenticated"
   on public.attendance for select to authenticated using (true);
 
 create policy "attendance_insert_authenticated"
-  on public.attendance for insert to authenticated with check (manager_id = auth.uid());
+  on public.attendance for insert to authenticated
+  with check (
+    manager_id = auth.uid()
+    and (
+      public.current_role() = 'admin'
+      or branch_id = public.current_branch_id()
+    )
+  );
+
+create policy "attendance_update_branch_staff"
+  on public.attendance for update to authenticated
+  using (
+    public.current_role() in ('manager', 'user')
+    and branch_id = public.current_branch_id()
+  );
+
+create policy "attendance_delete_branch_staff"
+  on public.attendance for delete to authenticated
+  using (
+    public.current_role() in ('manager', 'user')
+    and branch_id = public.current_branch_id()
+  );
+
+create policy "attendance_update_admin"
+  on public.attendance for update to authenticated
+  using (public.current_role() = 'admin');
+
+create policy "attendance_delete_admin"
+  on public.attendance for delete to authenticated
+  using (public.current_role() = 'admin');
 
 -- Storage bucket for student photos (public read)
 insert into storage.buckets (id, name, public)

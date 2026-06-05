@@ -7,6 +7,7 @@ import type { UserRole } from "../types";
 const dashboardPath: Record<UserRole, string> = {
   admin: "/admin",
   manager: "/manager",
+  user: "/user",
 };
 
 export function ProtectedRoute({
@@ -30,7 +31,7 @@ export function ProtectedRoute({
   if (!session) {
     return <Navigate to="/" replace />;
   }
-  if (session.role !== role) {
+  if (session.role !== role && session.role !== "admin") {
     return <Navigate to={dashboardPath[session.role]} replace />;
   }
 

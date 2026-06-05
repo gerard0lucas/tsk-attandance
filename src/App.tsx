@@ -6,11 +6,18 @@ import { AdminOverview } from "./pages/admin/AdminOverview";
 import { AdminBranches } from "./pages/admin/AdminBranches";
 import { AdminManagers } from "./pages/admin/AdminManagers";
 import { AdminStudents } from "./pages/admin/AdminStudents";
+import { AdminUsers } from "./pages/admin/AdminUsers";
 import { ReportsPage } from "./pages/ReportsPage";
 import { ManagerDashboard } from "./pages/manager/ManagerDashboard";
 import { ManagerScan } from "./pages/manager/ManagerScan";
 import { ManagerStudents } from "./pages/manager/ManagerStudents";
+import { ManagerUsers } from "./pages/manager/ManagerUsers";
+import { UserDashboard } from "./pages/user/UserDashboard";
+import { UserStudents } from "./pages/user/UserStudents";
+import { ScanPage } from "./pages/ScanPage";
+import { AttendanceEditPage } from "./pages/AttendanceEditPage";
 import { StudentQrPage } from "./pages/StudentQrPage";
+import { StudentProfilePage } from "./pages/StudentProfilePage";
 import { useStore } from "./store/useStore";
 import { useAppInit } from "./hooks/useAppInit";
 import { useStoreHydrated } from "./hooks/useStoreHydrated";
@@ -18,8 +25,14 @@ import { isSupabaseConfigured } from "./lib/supabase";
 import type { UserRole } from "./types";
 
 function isValidRole(role: unknown): role is UserRole {
-  return role === "admin" || role === "manager";
+  return role === "admin" || role === "manager" || role === "user";
 }
+
+const homePath: Record<UserRole, string> = {
+  admin: "/admin",
+  manager: "/manager",
+  user: "/user",
+};
 
 function AuthEntry() {
   const hydrated = useStoreHydrated();
@@ -40,22 +53,8 @@ function AuthEntry() {
         <div className="max-w-md rounded border border-morning bg-white p-6 text-left shadow-sm">
           <h1 className="text-lg font-semibold text-cerulean">Supabase not configured</h1>
           <p className="mt-2 text-sm text-mist">
-            This build has no Supabase keys. On <strong>Netlify</strong>, add environment variables, then
-            <strong> redeploy</strong> (required for Vite):
-          </p>
-          <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-mist">
-            <li>
-              <code className="text-cerulean">VITE_SUPABASE_URL</code> — e.g.{" "}
-              <code className="text-cerulean">https://xxxx.supabase.co</code> (no <code>/rest/v1</code>)
-            </li>
-            <li>
-              <code className="text-cerulean">VITE_SUPABASE_ANON_KEY</code> — anon public key from Supabase → Settings
-              → API
-            </li>
-          </ul>
-          <p className="mt-3 text-sm text-mist">
-            Locally: copy <code className="text-cerulean">.env.example</code> to <code className="text-cerulean">.env</code>
-            .
+            Add <code className="text-cerulean">VITE_SUPABASE_URL</code> and{" "}
+            <code className="text-cerulean">VITE_SUPABASE_ANON_KEY</code> to Netlify env, then redeploy.
           </p>
         </div>
       </div>
@@ -67,8 +66,7 @@ function AuthEntry() {
     return <LoginPage />;
   }
 
-  if (session?.role === "admin") return <Navigate to="/admin" replace />;
-  if (session?.role === "manager") return <Navigate to="/manager" replace />;
+  if (session) return <Navigate to={homePath[session.role]} replace />;
 
   return <LoginPage />;
 }
@@ -93,7 +91,11 @@ export default function App() {
           <Route index element={<AdminOverview />} />
           <Route path="branches" element={<AdminBranches />} />
           <Route path="managers" element={<AdminManagers />} />
+          <Route path="users" element={<AdminUsers />} />
           <Route path="students" element={<AdminStudents />} />
+          <Route path="students/:studentId" element={<StudentProfilePage />} />
+          <Route path="scan" element={<ScanPage />} />
+          <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>
@@ -109,7 +111,27 @@ export default function App() {
           <Route index element={<ManagerDashboard />} />
           <Route path="scan" element={<ManagerScan />} />
           <Route path="students" element={<ManagerStudents />} />
+          <Route path="students/:studentId" element={<StudentProfilePage />} />
+          <Route path="users" element={<ManagerUsers />} />
+          <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+        </Route>
+
+        <Route
+          path="/user"
+          element={
+            <ProtectedRoute role="user">
+              <DashboardLayout role="user" />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<UserDashboard />} />
+          <Route path="scan" element={<ScanPage />} />
+          <Route path="students" element={<UserStudents />} />
+          <Route path="students/:studentId" element={<StudentProfilePage />} />
+          <Route path="students/:studentId/qr" element={<StudentQrPage />} />
+          <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>
 

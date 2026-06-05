@@ -1,7 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 import { parseQrPayload } from "../lib/qr";
 import { Button } from "./ui/Button";
+
+export interface QrScannerHandle {
+  stop: () => Promise<void>;
+  isActive: () => boolean;
+}
 
 interface QrScannerProps {
   onScan: (payload: { sid: string; tok: string }) => void;
@@ -28,7 +40,10 @@ async function pickCameraId(): Promise<string | { facingMode: string }> {
   }
 }
 
-export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
+export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function QrScanner(
+  { onScan, onInvalidScan, paused },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -37,12 +52,34 @@ export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
   const lastScanRef = useRef("");
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const activeRef = useRef(false);
 
   useEffect(() => {
     if (!paused) {
       lastScanRef.current = "";
     }
   }, [paused]);
+
+  const stop = useCallback(async () => {
+    const scanner = scannerRef.current;
+    scannerRef.current = null;
+    if (scanner) {
+      try {
+        if (scanner.isScanning) await scanner.stop();
+        await scanner.clear();
+      } catch {
+        /* ignore */
+      }
+    }
+    activeRef.current = false;
+    setActive(false);
+    setStarting(false);
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    stop,
+    isActive: () => activeRef.current,
+  }));
 
   const handleDecoded = useCallback(
     (decoded: string) => {
@@ -63,21 +100,6 @@ export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
     [onScan, onInvalidScan],
   );
 
-  const stop = useCallback(async () => {
-    const scanner = scannerRef.current;
-    scannerRef.current = null;
-    if (scanner) {
-      try {
-        if (scanner.isScanning) await scanner.stop();
-        await scanner.clear();
-      } catch {
-        /* ignore */
-      }
-    }
-    setActive(false);
-    setStarting(false);
-  }, []);
-
   const start = async () => {
     setError(null);
     setStarting(true);
@@ -91,6 +113,7 @@ export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
     }
 
     el.innerHTML = "";
+    activeRef.current = true;
     setActive(true);
 
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
@@ -142,6 +165,7 @@ export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
 
       if (!started) {
         console.error("QR scanner start failed:", lastErr);
+        activeRef.current = false;
         setActive(false);
         setError(
           "Could not open camera. Allow camera permission in the browser, then try again.",
@@ -149,6 +173,7 @@ export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
       }
     } catch (e) {
       console.error("QR scanner error:", e);
+      activeRef.current = false;
       setActive(false);
       setError("Scanner failed to start. Use manual entry below.");
     } finally {
@@ -191,7 +216,7 @@ export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
           Start camera
         </Button>
       ) : (
-        <Button variant="secondary" onClick={stop} className="w-full">
+        <Button variant="secondary" onClick={() => void stop()} className="w-full">
           Stop camera
         </Button>
       )}
@@ -201,4 +226,4 @@ export function QrScanner({ onScan, onInvalidScan, paused }: QrScannerProps) {
       </p>
     </div>
   );
-}
+});

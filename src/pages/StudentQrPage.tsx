@@ -11,8 +11,11 @@ export function StudentQrPage() {
   const getStudent = useStore((s) => s.getStudent);
   const getBranch = useStore((s) => s.getBranch);
 
-  const isAdmin = location.pathname.startsWith("/admin");
-  const studentsPath = isAdmin ? "/admin/students" : "/manager/students";
+  const studentsPath = location.pathname.startsWith("/admin")
+    ? "/admin/students"
+    : location.pathname.startsWith("/user")
+      ? "/user/students"
+      : "/manager/students";
 
   const student = studentId ? getStudent(studentId) : undefined;
 

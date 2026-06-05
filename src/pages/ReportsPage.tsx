@@ -28,17 +28,23 @@ import { TableWrap, tableCell, tableCellMuted, tableHeadCell } from "../componen
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function ReportsPage() {
+  const session = useStore((s) => s.session);
   const attendance = useStore((s) => s.attendance);
   const students = useStore((s) => s.students);
   const branches = useStore((s) => s.branches);
   const getStudent = useStore((s) => s.getStudent);
   const getBranch = useStore((s) => s.getBranch);
-  const getManager = useStore((s) => s.getManager);
+  const getMarkedByName = useStore((s) => s.getMarkedByName);
+
+  const scopedBranch =
+    session?.role === "manager" || session?.role === "user"
+      ? session.branchId ?? "all"
+      : "all";
 
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(() => todayKey());
   const [period, setPeriod] = useState<ReportPeriod>("daily");
-  const [branchFilter, setBranchFilter] = useState<"all" | string>("all");
+  const [branchFilter, setBranchFilter] = useState<"all" | string>(scopedBranch);
 
   const { from, to, label } = useMemo(
     () => periodRange(period, selectedDateKey),
@@ -51,8 +57,8 @@ export function ReportsPage() {
   );
 
   const rows = useMemo(
-    () => buildReportRows(periodRecords, getStudent, getBranch, getManager),
-    [periodRecords, getStudent, getBranch, getManager],
+    () => buildReportRows(periodRecords, getStudent, getBranch, getMarkedByName),
+    [periodRecords, getStudent, getBranch, getMarkedByName],
   );
 
   const activeStudentsInScope = useMemo(() => {
@@ -200,15 +206,21 @@ export function ReportsPage() {
         </Button>
       </div>
 
-      <Select
-        label="Branch"
-        value={branchFilter}
-        onChange={(e) => setBranchFilter(e.target.value as "all" | string)}
-        options={[
-          { value: "all", label: "All branches" },
-          ...branches.map((b) => ({ value: b.id, label: b.name })),
-        ]}
-      />
+      {session?.role === "admin" ? (
+        <Select
+          label="Branch"
+          value={branchFilter}
+          onChange={(e) => setBranchFilter(e.target.value as "all" | string)}
+          options={[
+            { value: "all", label: "All branches" },
+            ...branches.map((b) => ({ value: b.id, label: b.name })),
+          ]}
+        />
+      ) : (
+        <p className="text-sm text-mist">
+          Branch: <span className="font-medium text-cerulean">{getBranch(scopedBranch)?.name ?? "—"}</span>
+        </p>
+      )}
 
       <Card>
         <h2 className="mb-1 font-medium text-cerulean">

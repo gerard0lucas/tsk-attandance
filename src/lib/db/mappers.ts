@@ -1,10 +1,11 @@
-import type { AttendanceRecord, Branch, Manager, Student } from "../../types";
+import type { AttendanceRecord, Branch, BranchUser, Manager, Student } from "../../types";
 
 export type ProfileRow = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "manager";
+  role: "admin" | "manager" | "user";
+  branch_id: string | null;
   created_at: string;
 };
 
@@ -51,6 +52,17 @@ export function toManager(row: ProfileRow): Manager {
     id: row.id,
     name: row.name,
     email: row.email,
+    branchId: row.branch_id ?? "",
+    createdAt: row.created_at,
+  };
+}
+
+export function toBranchUser(row: ProfileRow): BranchUser {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    branchId: row.branch_id ?? "",
     createdAt: row.created_at,
   };
 }
@@ -75,7 +87,7 @@ export function toAttendance(row: AttendanceRow): AttendanceRecord {
     id: row.id,
     studentId: row.student_id,
     branchId: row.branch_id,
-    managerId: row.manager_id,
+    markedById: row.manager_id,
     date: row.date,
     markedAt: row.marked_at,
   };

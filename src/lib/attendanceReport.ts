@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { AttendanceRecord, Branch, Manager, Student } from "../types";
+import type { AttendanceRecord, Branch, Student } from "../types";
 import { formatTime } from "./dates";
 import { isDateKeyInRange, parseDateKey } from "./reportRanges";
 
@@ -38,7 +38,7 @@ export function buildReportRows(
   records: AttendanceRecord[],
   getStudent: (id: string) => Student | undefined,
   getBranch: (id: string) => Branch | undefined,
-  getManager: (id: string) => Manager | undefined,
+  getMarkedByName: (id: string) => string,
 ): ReportRow[] {
   const sorted = [...records].sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -47,7 +47,6 @@ export function buildReportRows(
   return sorted.map((r) => {
     const s = getStudent(r.studentId);
     const b = getBranch(r.branchId);
-    const m = getManager(r.managerId);
     return {
       date: r.date,
       time: formatTime(r.markedAt),
@@ -55,7 +54,7 @@ export function buildReportRows(
       rollNumber: s?.rollNumber ?? "—",
       studentClass: s?.class ?? "—",
       branchName: b?.name ?? "—",
-      managerName: m?.name ?? "—",
+      managerName: getMarkedByName(r.markedById),
     };
   });
 }

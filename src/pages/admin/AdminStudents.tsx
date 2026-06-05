@@ -18,6 +18,7 @@ import {
 } from "../../components/ui/TableWrap";
 import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
+import { StudentActionIcons } from "../../components/StudentActionIcons";
 import { formatGender, GENDER_OPTIONS } from "../../lib/student";
 import type { Gender, Student } from "../../types";
 
@@ -42,6 +43,10 @@ export function AdminStudents() {
 
   const filtered =
     filterBranch === "all" ? students : students.filter((s) => s.branchId === filterBranch);
+
+  const openProfile = (studentId: string) => {
+    navigate(`/admin/students/${studentId}`);
+  };
 
   const openQr = (studentId: string) => {
     navigate(`/admin/students/${studentId}/qr`);
@@ -146,6 +151,7 @@ export function AdminStudents() {
             student={s}
             branchName={getBranch(s.branchId)?.name}
             present={isPresentToday(s.id)}
+            onView={() => openProfile(s.id)}
             onEdit={() => openEdit(s)}
             onQr={() => openQr(s.id)}
             onDelete={() => remove(s)}
@@ -176,6 +182,7 @@ export function AdminStudents() {
                   student={s}
                   branchName={getBranch(s.branchId)?.name}
                   present={isPresentToday(s.id)}
+                  onView={() => openProfile(s.id)}
                   onEdit={() => openEdit(s)}
                   onQr={() => openQr(s.id)}
                   onDelete={() => remove(s)}
@@ -243,6 +250,7 @@ function StudentCard({
   student,
   branchName,
   present,
+  onView,
   onEdit,
   onQr,
   onDelete,
@@ -250,6 +258,7 @@ function StudentCard({
   student: Student;
   branchName?: string;
   present: boolean;
+  onView: () => void;
   onEdit: () => void;
   onQr: () => void;
   onDelete: () => void;
@@ -257,17 +266,13 @@ function StudentCard({
   return (
     <CardRow
       actions={
-        <>
-          <Button variant="outline" size="sm" className="flex-1" onClick={onEdit}>
-            Edit
-          </Button>
-          <Button variant="outline" size="sm" className="flex-1" onClick={onQr}>
-            QR
-          </Button>
-          <Button variant="danger" size="sm" className="flex-1" onClick={onDelete}>
-            Delete
-          </Button>
-        </>
+        <StudentActionIcons
+          compact
+          onView={onView}
+          onEdit={onEdit}
+          onQr={onQr}
+          onDelete={onDelete}
+        />
       }
     >
       <div className="flex gap-3">
@@ -290,6 +295,7 @@ function StudentRow({
   student,
   branchName,
   present,
+  onView,
   onEdit,
   onQr,
   onDelete,
@@ -297,6 +303,7 @@ function StudentRow({
   student: Student;
   branchName?: string;
   present: boolean;
+  onView: () => void;
   onEdit: () => void;
   onQr: () => void;
   onDelete: () => void;
@@ -315,15 +322,13 @@ function StudentRow({
         {present ? <Badge tone="success">Present</Badge> : <Badge tone="neutral">Absent</Badge>}
       </td>
       <td className={tableActionsCell}>
-        <Button variant="outline" size="sm" onClick={onEdit}>
-          Edit
-        </Button>
-        <Button variant="outline" size="sm" className="ml-1" onClick={onQr}>
-          QR
-        </Button>
-        <Button variant="danger" size="sm" className="ml-1" onClick={onDelete}>
-          Delete
-        </Button>
+        <StudentActionIcons
+          compact
+          onView={onView}
+          onEdit={onEdit}
+          onQr={onQr}
+          onDelete={onDelete}
+        />
       </td>
     </tr>
   );

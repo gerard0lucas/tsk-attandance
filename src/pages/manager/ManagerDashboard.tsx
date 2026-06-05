@@ -7,19 +7,26 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { todayKey, formatTime } from "../../lib/dates";
 
 export function ManagerDashboard() {
+  const session = useStore((s) => s.session);
   const getStudent = useStore((s) => s.getStudent);
+  const getBranch = useStore((s) => s.getBranch);
   const students = useStore((s) => s.students);
   const attendance = useStore((s) => s.attendance);
 
+  const branchId = session?.branchId;
   const today = todayKey();
-  const activeStudents = students.filter((s) => s.active);
-  const todayAttendance = attendance.filter((a) => a.date === today);
+  const activeStudents = students.filter(
+    (s) => s.active && (!branchId || s.branchId === branchId),
+  );
+  const todayAttendance = attendance.filter(
+    (a) => a.date === today && (!branchId || a.branchId === branchId),
+  );
 
   return (
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
         title="Dashboard"
-        subtitle={`Today: ${today}`}
+        subtitle={`${getBranch(branchId ?? "")?.name ?? "Branch"} · ${today}`}
         action={
           <Link to="/manager/scan" className="block w-full sm:inline-block sm:w-auto">
             <Button className="w-full sm:w-auto">Scan QR</Button>

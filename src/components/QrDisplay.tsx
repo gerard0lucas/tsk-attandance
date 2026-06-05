@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { buildQrPayload } from "../lib/qr";
 import { formatGender } from "../lib/student";
@@ -6,7 +7,6 @@ import { Button } from "./ui/Button";
 import { StudentPhoto } from "./StudentPhoto";
 
 const QR_SIZE_DEFAULT = 168;
-const QR_SIZE_PAGE = 220;
 
 interface QrDisplayProps {
   student: Student;
@@ -16,8 +16,19 @@ interface QrDisplayProps {
 
 export function QrDisplay({ student, branchName, variant = "default" }: QrDisplayProps) {
   const isPage = variant === "page";
-  const qrSize = isPage ? QR_SIZE_PAGE : QR_SIZE_DEFAULT;
+  const [qrSize, setQrSize] = useState(isPage ? 220 : QR_SIZE_DEFAULT);
   const value = buildQrPayload(student);
+
+  useEffect(() => {
+    if (!isPage) {
+      setQrSize(QR_SIZE_DEFAULT);
+      return;
+    }
+    const update = () => setQrSize(Math.min(220, Math.max(160, window.innerWidth - 96)));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [isPage]);
 
   const download = () => {
     const svg = document.getElementById(`qr-${student.id}`);
@@ -42,7 +53,7 @@ export function QrDisplay({ student, branchName, variant = "default" }: QrDispla
 
   return (
     <div className={isPage ? "space-y-6" : "space-y-5"}>
-      <div className="flex items-start gap-4 rounded-lg border border-morning bg-page/60 p-4">
+      <div className="flex flex-col items-center gap-4 rounded-lg border border-morning bg-page/60 p-3 sm:flex-row sm:items-start sm:p-4">
         <StudentPhoto student={student} size={isPage ? "lg" : "md"} />
         <dl className="min-w-0 flex-1 text-sm">
           <dt className="sr-only">Name</dt>
@@ -68,14 +79,16 @@ export function QrDisplay({ student, branchName, variant = "default" }: QrDispla
 
       <div className="flex flex-col items-center gap-4">
         <p className="text-xs font-medium uppercase tracking-wide text-mist">Attendance QR</p>
-        <div className="rounded-lg border border-morning bg-white p-4 shadow-sm">
-          <QRCodeSVG
-            id={`qr-${student.id}`}
-            value={value}
-            size={qrSize}
-            level="H"
-            includeMargin={false}
-          />
+        <div className="w-full max-w-[min(100%,280px)] rounded-lg border border-morning bg-white p-3 shadow-sm sm:p-4">
+          <div className="mx-auto w-fit max-w-full">
+            <QRCodeSVG
+              id={`qr-${student.id}`}
+              value={value}
+              size={qrSize}
+              level="H"
+              includeMargin={false}
+            />
+          </div>
         </div>
         <p className="max-w-sm text-center text-sm text-mist">
           Print or download for the student. Managers scan this at check-in.
