@@ -5,6 +5,8 @@ import { isSupabaseConfigured } from "../lib/supabase";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import type { UserRole } from "../types";
+import { APP_NAME } from "../lib/branding";
+import { HomeHeaderBanner } from "../components/HomeHeaderBanner";
 
 const dashboardPath: Record<UserRole, string> = {
   admin: "/admin",
@@ -48,10 +50,14 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-dvh w-full items-center justify-center bg-page px-4 py-8 pt-safe pb-safe">
+    <div className="flex min-h-dvh w-full flex-col bg-page pt-safe pb-safe">
+      <div className="mx-auto w-full max-w-4xl px-4 pt-4">
+        <HomeHeaderBanner />
+      </div>
+      <div className="flex flex-1 items-center justify-center px-4 py-8">
       <div className="mx-auto w-full max-w-sm">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-cerulean">TSK Attendance</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-cerulean">{APP_NAME}</h1>
           <p className="mt-2 text-mist">Sign in with your account</p>
         </div>
 
@@ -97,6 +103,7 @@ export function LoginPage() {
             </Button>
           </form>
         </div>
+      </div>
       </div>
     </div>
   );

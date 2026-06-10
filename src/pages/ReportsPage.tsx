@@ -1,16 +1,28 @@
 import { useMemo, useState } from "react";
 import { addMonths, format, isSameDay, isSameMonth } from "date-fns";
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useStore } from "../store/useStore";
+import { APP_SLUG } from "../lib/branding";
 import { todayKey } from "../lib/dates";
 import {
   buildReportRows,
   filterAttendance,
   countByDate,
   reportToCsv,
-  summaryStats,
   formatReportDate,
 } from "../lib/attendanceReport";
+import {
+  activeStudentsInBranch,
+  branchAttendanceSlices,
+  branchEnrollmentSlices,
+  branchPresentAbsentTrend,
+  classAttendanceSlices,
+  dailyAttendanceTrend,
+  enrollmentClassSlices,
+  enrollmentGenderSlices,
+  genderAttendanceSlices,
+  presentAbsentSlices,
+} from "../lib/reportAnalytics";
 import {
   calendarDaysForMonth,
   periodRange,
@@ -18,14 +30,21 @@ import {
   type ReportPeriod,
   parseDateKey,
 } from "../lib/reportRanges";
+import { BranchBarChart, DailyBarChart } from "../components/reports/GroupedBarChart";
+import { DonutChart } from "../components/reports/DonutChart";
+import { ReportChartCard } from "../components/reports/ReportChartCard";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Select } from "../components/ui/Select";
-import { MobileCard, MobileCardRow } from "../components/ui/MobileCard";
-import { TableWrap, tableCell, tableCellMuted, tableHeadCell } from "../components/ui/TableWrap";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const PERIOD_OPTIONS: { id: ReportPeriod; label: string }[] = [
+  { id: "daily", label: "Daily" },
+  { id: "weekly", label: "Weekly" },
+  { id: "monthly", label: "Monthly" },
+];
 
 export function ReportsPage() {
   const session = useStore((s) => s.session);
@@ -38,12 +57,12 @@ export function ReportsPage() {
 
   const scopedBranch =
     session?.role === "manager" || session?.role === "user"
-      ? session.branchId ?? "all"
+      ? session.branchId || "all"
       : "all";
 
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(() => todayKey());
-  const [period, setPeriod] = useState<ReportPeriod>("daily");
+  const [period, setPeriod] = useState<ReportPeriod>("weekly");
   const [branchFilter, setBranchFilter] = useState<"all" | string>(scopedBranch);
 
   const { from, to, label } = useMemo(
@@ -61,14 +80,71 @@ export function ReportsPage() {
     [periodRecords, getStudent, getBranch, getMarkedByName],
   );
 
-  const activeStudentsInScope = useMemo(() => {
-    if (branchFilter === "all") return students.filter((s) => s.active).length;
-    return students.filter((s) => s.active && s.branchId === branchFilter).length;
-  }, [students, branchFilter]);
+  const activeInScope = useMemo(
+    () => activeStudentsInBranch(students, branchFilter),
+    [students, branchFilter],
+  );
 
-  const stats = useMemo(
-    () => summaryStats(periodRecords, activeStudentsInScope),
-    [periodRecords, activeStudentsInScope],
+  const presentAbsent = useMemo(
+    () => presentAbsentSlices(periodRecords, activeInScope),
+    [periodRecords, activeInScope],
+  );
+
+  const genderSlices = useMemo(
+    () => genderAttendanceSlices(periodRecords, activeInScope),
+    [periodRecords, activeInScope],
+  );
+
+  const branchSlices = useMemo(
+    () => branchAttendanceSlices(periodRecords, branches, branchFilter),
+    [periodRecords, branches, branchFilter],
+  );
+
+  const branchEnrollment = useMemo(
+    () => branchEnrollmentSlices(branches, students, branchFilter),
+    [branches, students, branchFilter],
+  );
+
+  const branchChart = branchSlices.length > 0 ? branchSlices : branchEnrollment;
+  const branchDonutSubtitle =
+    branchSlices.length > 0
+      ? "Unique students present per branch"
+      : "Active students enrolled per branch";
+
+  const classSlices = useMemo(
+    () => classAttendanceSlices(periodRecords, activeInScope),
+    [periodRecords, activeInScope],
+  );
+
+  const enrollmentGender = useMemo(
+    () => enrollmentGenderSlices(activeInScope),
+    [activeInScope],
+  );
+
+  const enrollmentClass = useMemo(
+    () => enrollmentClassSlices(activeInScope),
+    [activeInScope],
+  );
+
+  const genderChart = genderSlices.length > 0 ? genderSlices : enrollmentGender;
+  const classChart = classSlices.length > 0 ? classSlices : enrollmentClass;
+  const genderSubtitle =
+    genderSlices.length > 0
+      ? "Present students by gender"
+      : "All active students by gender";
+  const classSubtitle =
+    classSlices.length > 0
+      ? "Top classes with present students"
+      : "All active students by class";
+
+  const dailyTrend = useMemo(
+    () => dailyAttendanceTrend(periodRecords, from, to, activeInScope),
+    [periodRecords, from, to, activeInScope],
+  );
+
+  const branchTrend = useMemo(
+    () => branchPresentAbsentTrend(periodRecords, branches, students, branchFilter),
+    [periodRecords, branches, students, branchFilter],
   );
 
   const gridDays = useMemo(() => calendarDaysForMonth(visibleMonth), [visibleMonth]);
@@ -80,26 +156,149 @@ export function ReportsPage() {
   );
   const dayCounts = useMemo(() => countByDate(monthAttendance), [monthAttendance]);
 
+  const showBranchCharts = branchFilter === "all" && branches.length > 1;
+  const selectedDate = parseDateKey(selectedDateKey);
+
   const downloadCsv = () => {
     const csv = reportToCsv(rows);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `tsk-attendance-${from}-to-${to}.csv`;
+    a.download = `${APP_SLUG}-${from}-to-${to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const selectedDate = parseDateKey(selectedDateKey);
-
   return (
     <div className="space-y-5 sm:space-y-6">
-      <PageHeader title="Reports" subtitle="Calendar and attendance export" />
+      <PageHeader
+        title="Reports"
+        subtitle="Attendance analytics and trends"
+        action={
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={downloadCsv}
+            className="inline-flex items-center gap-2"
+          >
+            <Download className="h-4 w-4 shrink-0" />
+            Export CSV
+          </Button>
+        }
+      />
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="inline-flex w-full max-w-md rounded-full border border-morning bg-white p-1 shadow-sm">
+          {PERIOD_OPTIONS.map(({ id, label: lbl }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setPeriod(id)}
+              className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                period === id
+                  ? "bg-cerulean text-white shadow-sm"
+                  : "text-mist hover:text-cerulean"
+              }`}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {session?.role === "admin" ? (
+          <Select
+            label="Branch"
+            value={branchFilter}
+            onChange={(e) => setBranchFilter(e.target.value as "all" | string)}
+            options={[
+              { value: "all", label: "All branches" },
+              ...branches.map((b) => ({ value: b.id, label: b.name })),
+            ]}
+            wrapperClassName="w-full lg:w-56"
+          />
+        ) : (
+          <p className="text-sm text-mist lg:pb-2">
+            Branch:{" "}
+            <span className="font-medium text-cerulean">
+              {getBranch(scopedBranch)?.name ?? "—"}
+            </span>
+          </p>
+        )}
+      </div>
+
+      <p className="text-sm text-mist">
+        {label} · {formatReportDate(from)}
+        {from !== to && ` → ${formatReportDate(to)}`}
+      </p>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <ReportChartCard
+          title="Attendance split"
+          subtitle="Present vs absent students in this period"
+        >
+          <DonutChart
+            data={presentAbsent}
+            emptyLabel="Add students to see attendance split."
+          />
+        </ReportChartCard>
+
+        <ReportChartCard
+          title="Attendance over time"
+          subtitle="Daily present and absent counts"
+        >
+          <DailyBarChart
+            data={dailyTrend}
+            emptyLabel="No students in scope for this period."
+          />
+        </ReportChartCard>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {showBranchCharts ? (
+          <>
+            <ReportChartCard title="Students by branch" subtitle={branchDonutSubtitle}>
+              <DonutChart
+                data={branchChart}
+                emptyLabel="Add branches and students to see branch breakdown."
+              />
+            </ReportChartCard>
+
+            <ReportChartCard
+              title="Branch comparison"
+              subtitle="Present vs absent by branch"
+            >
+              <BranchBarChart data={branchTrend} />
+            </ReportChartCard>
+          </>
+        ) : (
+          <>
+            <ReportChartCard title="Students by gender" subtitle={genderSubtitle}>
+              <DonutChart
+                data={genderChart}
+                emptyLabel="Add students to see gender breakdown."
+              />
+            </ReportChartCard>
+
+            <ReportChartCard title="Students by class" subtitle={classSubtitle}>
+              <DonutChart
+                data={classChart}
+                emptyLabel="Add students to see class breakdown."
+              />
+            </ReportChartCard>
+          </>
+        )}
+      </div>
 
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-medium text-cerulean">Calendar</h2>
+          <div className="flex items-center gap-2">
+            <CalendarRange className="h-5 w-5 text-mist" aria-hidden />
+            <div>
+              <h2 className="font-medium text-cerulean">Select date</h2>
+              <p className="text-xs text-mist">Tap a day to change the report period anchor</p>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -138,6 +337,7 @@ export function ReportsPage() {
             const count = dayCounts.get(key) ?? 0;
             const inMonth = isSameMonth(day, visibleMonth);
             const selected = isSameDay(day, selectedDate);
+            const hasData = count > 0;
             return (
               <button
                 key={key}
@@ -146,7 +346,7 @@ export function ReportsPage() {
                   setSelectedDateKey(key);
                   setVisibleMonth(day);
                 }}
-                className={`flex min-h-[44px] flex-col items-center justify-center rounded border py-1 text-sm transition-colors sm:min-h-[48px] ${
+                className={`relative flex min-h-[44px] flex-col items-center justify-center rounded border py-1 text-sm transition-colors sm:min-h-[48px] ${
                   selected
                     ? "border-cerulean bg-cerulean text-white"
                     : inMonth
@@ -155,159 +355,17 @@ export function ReportsPage() {
                 }`}
               >
                 <span className="font-medium">{format(day, "d")}</span>
-                {count > 0 && (
+                {hasData && (
                   <span
-                    className={`text-[10px] leading-tight sm:text-xs ${
-                      selected ? "text-morning" : "text-mist"
+                    className={`mt-0.5 h-1.5 w-1.5 rounded-full ${
+                      selected ? "bg-honey" : "bg-mist"
                     }`}
-                    title={`${count} check-in${count === 1 ? "" : "s"}`}
-                  >
-                    {count}
-                  </span>
+                    title="Has attendance"
+                  />
                 )}
               </button>
             );
           })}
-        </div>
-        <p className="mt-3 text-xs text-mist">
-          Tap a day to select it. Small numbers are check-in counts for that day (branch filter applies).
-        </p>
-      </Card>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-        <div className="grid grid-cols-3 gap-2">
-          {(
-            [
-              { id: "daily" as const, label: "Daily" },
-              { id: "weekly" as const, label: "Weekly" },
-              { id: "monthly" as const, label: "Monthly" },
-            ] as const
-          ).map(({ id, label: lbl }) => (
-            <Button
-              key={id}
-              type="button"
-              variant={period === id ? "primary" : "outline"}
-              size="sm"
-              className="w-full"
-              onClick={() => setPeriod(id)}
-            >
-              {lbl}
-            </Button>
-          ))}
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={downloadCsv}
-          className="inline-flex w-full items-center justify-center gap-2"
-        >
-          <Download className="h-4 w-4 shrink-0" />
-          Download CSV
-        </Button>
-      </div>
-
-      {session?.role === "admin" ? (
-        <Select
-          label="Branch"
-          value={branchFilter}
-          onChange={(e) => setBranchFilter(e.target.value as "all" | string)}
-          options={[
-            { value: "all", label: "All branches" },
-            ...branches.map((b) => ({ value: b.id, label: b.name })),
-          ]}
-        />
-      ) : (
-        <p className="text-sm text-mist">
-          Branch: <span className="font-medium text-cerulean">{getBranch(scopedBranch)?.name ?? "—"}</span>
-        </p>
-      )}
-
-      <Card>
-        <h2 className="mb-1 font-medium text-cerulean">
-          {period === "daily" && "Daily report"}
-          {period === "weekly" && "Weekly report"}
-          {period === "monthly" && "Monthly report"}
-        </h2>
-        <p className="text-sm text-mist">{label}</p>
-        <p className="mt-2 text-xs text-mist">
-          Range: {formatReportDate(from)}
-          {from !== to && ` → ${formatReportDate(to)}`}
-        </p>
-
-        <div className="mt-4 grid grid-cols-1 gap-3 min-[400px]:grid-cols-3">
-          <div className="rounded border border-morning bg-morning/25 px-3 py-2 text-center">
-            <p className="text-xs text-mist">Check-ins</p>
-            <p className="text-xl font-semibold text-cerulean tabular-nums">{stats.checkIns}</p>
-          </div>
-          <div className="rounded border border-morning bg-morning/25 px-3 py-2 text-center">
-            <p className="text-xs text-mist">Unique students</p>
-            <p className="text-xl font-semibold text-cerulean tabular-nums">{stats.uniqueStudents}</p>
-          </div>
-          <div className="rounded border border-morning bg-morning/25 px-3 py-2 text-center">
-            <p className="text-xs text-mist">Active students (filter)</p>
-            <p className="text-xl font-semibold text-cerulean tabular-nums">
-              {stats.activeStudentsInScope}
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card padding="sm">
-        <h2 className="mb-3 px-1 font-medium text-cerulean">Detail</h2>
-
-        <div className="space-y-3 md:hidden">
-          {rows.map((r, i) => (
-            <MobileCard
-              key={`${r.date}-${r.time}-${r.rollNumber}-${i}`}
-              title={r.studentName}
-              subtitle={`${formatReportDate(r.date)} · ${r.time}`}
-            >
-              <MobileCardRow label="Roll" value={r.rollNumber} />
-              <MobileCardRow label="Class" value={r.studentClass} />
-              <MobileCardRow label="Branch" value={r.branchName} />
-              <MobileCardRow label="Manager" value={r.managerName} />
-            </MobileCard>
-          ))}
-          {rows.length === 0 && (
-            <p className="py-4 text-center text-sm text-mist">No check-ins in this range.</p>
-          )}
-        </div>
-
-        <div className="hidden md:block">
-          <TableWrap>
-            <table className="w-full min-w-[640px]">
-              <thead>
-                <tr className="border-b border-morning">
-                  <th className={tableHeadCell}>Date</th>
-                  <th className={tableHeadCell}>Time</th>
-                  <th className={tableHeadCell}>Student</th>
-                  <th className={tableHeadCell}>Roll</th>
-                  <th className={tableHeadCell}>Class</th>
-                  <th className={tableHeadCell}>Branch</th>
-                  <th className={tableHeadCell}>Manager</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr
-                    key={`${r.date}-${r.time}-${r.rollNumber}-${i}`}
-                    className="border-b border-morning last:border-0"
-                  >
-                    <td className={tableCellMuted}>{formatReportDate(r.date)}</td>
-                    <td className={tableCellMuted}>{r.time}</td>
-                    <td className={tableCell}>{r.studentName}</td>
-                    <td className={tableCellMuted}>{r.rollNumber}</td>
-                    <td className={tableCellMuted}>{r.studentClass}</td>
-                    <td className={tableCellMuted}>{r.branchName}</td>
-                    <td className={tableCellMuted}>{r.managerName}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableWrap>
-          {rows.length === 0 && (
-            <p className="px-1 py-4 text-center text-sm text-mist">No check-ins in this range.</p>
-          )}
         </div>
       </Card>
     </div>

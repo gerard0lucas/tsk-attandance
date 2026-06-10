@@ -1,4 +1,4 @@
-# TSK Attendance
+# Harimandir Balopana Attendence
 
 Branch-based student attendance with QR scanning. React + Vite + Supabase.
 

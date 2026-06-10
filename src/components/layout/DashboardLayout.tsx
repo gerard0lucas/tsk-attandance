@@ -1,22 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   Building2,
   ClipboardList,
-  Home,
   LayoutDashboard,
   Menu,
   MoreHorizontal,
   ScanLine,
+  User,
   UserCog,
   Users,
   X,
   type LucideIcon,
 } from "lucide-react";
 import { useStore } from "../../store/useStore";
+import { APP_NAME } from "../../lib/branding";
+import { HomeHeaderBanner } from "../HomeHeaderBanner";
+import { SidebarBrand } from "./SidebarBrand";
+import { SidebarProfile } from "./SidebarProfile";
 import type { UserRole } from "../../types";
-import { Button } from "../ui/Button";
 
 type NavItem = {
   to: string;
@@ -26,7 +29,7 @@ type NavItem = {
 };
 
 const adminNav: NavItem[] = [
-  { to: "/admin", label: "Overview", end: true, icon: LayoutDashboard },
+  { to: "/admin", label: "Dashboard", end: true, icon: LayoutDashboard },
   { to: "/admin/branches", label: "Branches", icon: Building2 },
   { to: "/admin/managers", label: "Managers", icon: UserCog },
   { to: "/admin/users", label: "Users", icon: Users },
@@ -37,7 +40,7 @@ const adminNav: NavItem[] = [
 ];
 
 const managerNav: NavItem[] = [
-  { to: "/manager", label: "Home", end: true, icon: Home },
+  { to: "/manager", label: "Dashboard", end: true, icon: LayoutDashboard },
   { to: "/manager/scan", label: "Scan", icon: ScanLine },
   { to: "/manager/students", label: "Students", icon: Users },
   { to: "/manager/users", label: "Users", icon: UserCog },
@@ -46,7 +49,7 @@ const managerNav: NavItem[] = [
 ];
 
 const userNav: NavItem[] = [
-  { to: "/user", label: "Home", end: true, icon: Home },
+  { to: "/user", label: "Dashboard", end: true, icon: LayoutDashboard },
   { to: "/user/scan", label: "Scan", icon: ScanLine },
   { to: "/user/students", label: "Students", icon: Users },
   { to: "/user/attendance", label: "Attendance", icon: ClipboardList },
@@ -88,6 +91,8 @@ function NavItems({
 
 export function DashboardLayout({ role }: { role: UserRole }) {
   const session = useStore((s) => s.session);
+  const managers = useStore((s) => s.managers);
+  const users = useStore((s) => s.users);
   const dataLoading = useStore((s) => s.dataLoading);
   const actionError = useStore((s) => s.actionError);
   const logout = useStore((s) => s.logout);
@@ -97,12 +102,17 @@ export function DashboardLayout({ role }: { role: UserRole }) {
 
   const nav =
     role === "admin" ? adminNav : role === "manager" ? managerNav : userNav;
-  const subtitle =
-    role === "admin"
-      ? "Admin"
-      : role === "manager"
-        ? (session?.name ?? "Manager")
-        : (session?.name ?? "User");
+  const roleLabel =
+    role === "admin" ? "Admin" : role === "manager" ? "Manager" : "User";
+
+  const sessionWithPhoto = useMemo(() => {
+    if (!session) return null;
+    const photo =
+      session.photo ??
+      managers.find((m) => m.id === session.userId)?.photo ??
+      users.find((u) => u.id === session.userId)?.photo;
+    return photo && photo !== session.photo ? { ...session, photo } : session;
+  }, [session, managers, users]);
 
   const mobilePrimary = nav.slice(0, MOBILE_PRIMARY_COUNT);
   const showMore = nav.length > MOBILE_PRIMARY_COUNT;
@@ -133,9 +143,12 @@ export function DashboardLayout({ role }: { role: UserRole }) {
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-mist/30 bg-cerulean px-3 py-2.5 text-white pt-safe sm:px-4 sm:py-3 lg:hidden">
         <div className="min-w-0 pr-2">
           <p className="truncate text-sm font-semibold tracking-wide sm:text-base">
-            TSK Attendance
+            {APP_NAME}
           </p>
-          <p className="truncate text-[11px] text-morning sm:text-xs">{subtitle}</p>
+          <p className="flex items-center gap-1 truncate text-[11px] text-morning sm:text-xs">
+            <User className="h-3 w-3 shrink-0" aria-hidden />
+            <span>{roleLabel}</span>
+          </p>
         </div>
         <button
           type="button"
@@ -155,20 +168,23 @@ export function DashboardLayout({ role }: { role: UserRole }) {
             className="fixed inset-0 z-40 bg-cerulean/50 lg:hidden"
             onClick={() => setMenuOpen(false)}
           />
-          <aside className="fixed inset-y-0 right-0 z-50 flex w-[min(100%,300px)] flex-col bg-cerulean text-white shadow-xl lg:hidden">
+          <aside className="fixed inset-y-0 right-0 z-50 flex h-dvh w-[min(100%,300px)] flex-col bg-cerulean text-white shadow-xl lg:hidden">
             <div className="flex items-center justify-between border-b border-mist/30 px-4 py-4 pt-safe">
-              <div className="min-w-0">
-                <p className="font-semibold">Menu</p>
-                <p className="truncate text-xs text-morning">{session?.name}</p>
-              </div>
+              <SidebarBrand
+                roleLabel={roleLabel}
+                className="min-w-0 flex-1 items-start text-left"
+              />
               <button
                 type="button"
                 aria-label="Close"
-                className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded bg-white/10 hover:bg-white/20"
+                className="touch-target ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded bg-white/10 hover:bg-white/20"
                 onClick={() => setMenuOpen(false)}
               >
                 <X className="h-5 w-5" />
               </button>
+            </div>
+            <div className="border-b border-mist/30 px-4 py-4">
+              <SidebarProfile session={sessionWithPhoto} onSignOut={signOut} compact />
             </div>
             <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
               <NavItems
@@ -178,35 +194,19 @@ export function DashboardLayout({ role }: { role: UserRole }) {
                 showIcons
               />
             </nav>
-            <div className="border-t border-mist/30 p-4 pb-safe">
-              <Button
-                className="w-full !border-cerulean !bg-white !text-cerulean hover:!bg-morning min-h-[44px]"
-                onClick={signOut}
-              >
-                Sign out
-              </Button>
-            </div>
           </aside>
         </>
       )}
 
-      <aside className="hidden w-52 shrink-0 flex-col bg-cerulean text-white lg:flex">
-        <div className="border-b border-mist/30 px-4 py-4">
-          <p className="font-semibold tracking-wide">TSK Attendance</p>
-          <p className="mt-1 text-xs text-morning">{subtitle}</p>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden h-dvh w-52 flex-col bg-cerulean text-white lg:flex">
+        <div className="shrink-0 border-b border-mist/30 px-4 py-5">
+          <SidebarBrand roleLabel={roleLabel} />
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-2">
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain p-2">
           <NavItems items={nav} className={sideLinkClass} showIcons />
         </nav>
-        <div className="border-t border-mist/30 p-4">
-          <p className="truncate text-sm text-morning">{session?.name}</p>
-          <Button
-            size="sm"
-            className="mt-2 w-full !border-cerulean !bg-white !text-cerulean hover:!bg-morning min-h-[44px]"
-            onClick={signOut}
-          >
-            Sign out
-          </Button>
+        <div className="shrink-0 pb-safe">
+          <SidebarProfile session={sessionWithPhoto} onSignOut={signOut} />
         </div>
       </aside>
 
@@ -240,8 +240,9 @@ export function DashboardLayout({ role }: { role: UserRole }) {
         )}
       </nav>
 
-      <main className="flex-1 overflow-x-hidden bg-page px-3 py-3 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] pt-1 sm:px-4 sm:py-4 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] lg:p-6 lg:pb-6">
-        <div className="mx-auto w-full max-w-4xl min-w-0">
+      <main className="flex-1 overflow-x-hidden bg-page px-3 py-3 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] pt-1 sm:px-4 sm:py-4 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] lg:ml-52 lg:min-h-dvh lg:p-6 lg:pb-6">
+        <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 sm:space-y-4">
+          <HomeHeaderBanner />
           {dataLoading && (
             <p className="mb-3 rounded border border-morning bg-white px-3 py-2 text-sm text-mist sm:mb-4">
               Syncing data…

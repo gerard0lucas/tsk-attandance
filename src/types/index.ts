@@ -5,7 +5,15 @@ export type Gender = "male" | "female" | "other";
 export interface Branch {
   id: string;
   name: string;
-  location: string;
+  branchName: string;
+  city: string;
+  country: string;
+  address: string;
+  mapLocation: string;
+  contact1Name: string;
+  contact1Phone: string;
+  contact2Name: string;
+  contact2Phone: string;
   createdAt: string;
 }
 
@@ -14,6 +22,9 @@ export interface Manager {
   name: string;
   email: string;
   branchId: string;
+  phone: string;
+  photo?: string;
+  address: string;
   createdAt: string;
 }
 
@@ -22,6 +33,9 @@ export interface BranchUser {
   name: string;
   email: string;
   branchId: string;
+  phone: string;
+  photo?: string;
+  address: string;
   createdAt: string;
 }
 
@@ -36,6 +50,8 @@ export interface Student {
   rollNumber: string;
   class: string;
   gender: Gender;
+  schoolName: string;
+  phone: string;
   photo?: string;
   qrToken: string;
   active: boolean;
@@ -56,6 +72,7 @@ export interface Session {
   userId: string;
   name: string;
   branchId?: string;
+  photo?: string;
 }
 
 export interface QrPayload {

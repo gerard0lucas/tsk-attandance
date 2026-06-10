@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { MapPin, Phone } from "lucide-react";
 import { useStore } from "../../store/useStore";
+import { PhotoUpload } from "../../components/PhotoUpload";
+import { StudentPhoto } from "../../components/StudentPhoto";
 import { Button } from "../../components/ui/Button";
 import { Card, CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
@@ -32,6 +35,9 @@ export function AdminManagers() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [photo, setPhoto] = useState<string | undefined>();
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -39,6 +45,9 @@ export function AdminManagers() {
     setName("");
     setEmail("");
     setPassword("");
+    setPhone("");
+    setAddress("");
+    setPhoto(undefined);
     setBranchId(branches[0]?.id ?? "");
     setEditing(null);
   };
@@ -48,11 +57,17 @@ export function AdminManagers() {
     setSaving(true);
     try {
       setNotice("");
+      const profileFields = {
+        phone: phone.trim(),
+        address: address.trim(),
+        photo,
+      };
       if (editing) {
         const result = await updateManager(editing.id, {
           name: name.trim(),
           email: email.trim(),
           branchId,
+          ...profileFields,
         });
         if (!result.branchAssigned) {
           setNotice(
@@ -66,6 +81,7 @@ export function AdminManagers() {
           email: email.trim(),
           password: password.trim(),
           branchId,
+          ...profileFields,
         });
         if (!manager.branchId && branchId) {
           setNotice(
@@ -88,6 +104,9 @@ export function AdminManagers() {
     setEditing(m);
     setName(m.name);
     setEmail(m.email);
+    setPhone(m.phone);
+    setAddress(m.address);
+    setPhoto(m.photo);
     setBranchId(m.branchId || (branches[0]?.id ?? ""));
     setPassword("");
     setOpen(true);
@@ -146,9 +165,28 @@ export function AdminManagers() {
               </>
             }
           >
-            <p className="font-medium text-cerulean">{m.name}</p>
-            <p className="break-all text-sm text-mist">{m.email}</p>
-            <p className="text-sm text-mist">Branch: {getBranch(m.branchId)?.name ?? "—"}</p>
+            <div className="flex items-start gap-3">
+              <StudentPhoto student={{ name: m.name, photo: m.photo }} size="md" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-cerulean">{m.name}</p>
+                <p className="break-all text-sm text-mist">{m.email}</p>
+                <p className="text-sm text-mist">
+                  Branch: {getBranch(m.branchId)?.name ?? "—"}
+                </p>
+                {m.phone && (
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-mist">
+                    <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {m.phone}
+                  </p>
+                )}
+                {m.address && (
+                  <p className="mt-1 flex items-start gap-1.5 text-sm text-mist">
+                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {m.address}
+                  </p>
+                )}
+              </div>
+            </div>
           </CardRow>
         ))}
         {managers.length === 0 && <p className="text-sm text-mist">No managers yet.</p>}
@@ -156,11 +194,12 @@ export function AdminManagers() {
 
       <Card padding="sm" className="hidden md:block">
         <TableWrap>
-          <table className="w-full min-w-[560px]">
+          <table className="w-full min-w-[720px]">
             <thead>
               <tr className="border-b border-morning">
-                <th className={tableHeadCell}>Name</th>
-                <th className={tableHeadCell}>Email</th>
+                <th className={tableHeadCell}>Manager</th>
+                <th className={tableHeadCell}>Phone</th>
+                <th className={tableHeadCell}>Address</th>
                 <th className={tableHeadCell}>Branch</th>
                 <th className={tableHeadCell}>Actions</th>
               </tr>
@@ -168,8 +207,17 @@ export function AdminManagers() {
             <tbody>
               {managers.map((m) => (
                 <tr key={m.id} className="border-b border-morning last:border-0">
-                  <td className={tableCell}>{m.name}</td>
-                  <td className={tableCellMuted}>{m.email}</td>
+                  <td className={tableCell}>
+                    <div className="flex items-center gap-3">
+                      <StudentPhoto student={{ name: m.name, photo: m.photo }} size="sm" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-cerulean">{m.name}</p>
+                        <p className="truncate text-sm text-mist">{m.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className={tableCellMuted}>{m.phone || "—"}</td>
+                  <td className={tableCellMuted}>{m.address || "—"}</td>
                   <td className={tableCellMuted}>{getBranch(m.branchId)?.name ?? "—"}</td>
                   <td className={tableActionsCell}>
                     <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
@@ -196,6 +244,7 @@ export function AdminManagers() {
 
       <Modal
         open={open}
+        wide
         onClose={() => { setOpen(false); reset(); }}
         title={editing ? "Edit manager" : "New manager"}
         footer={
@@ -210,8 +259,20 @@ export function AdminManagers() {
         }
       >
         <FormStack>
+          <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <Input
+            label="Address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
           <Select
             label="Branch"
             value={branchId}

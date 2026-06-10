@@ -4,6 +4,7 @@ import { useStore } from "../store/useStore";
 import { Button } from "../components/ui/Button";
 import { CardRow } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import { StudentSearchField } from "../components/StudentSearchField";
 import { Select } from "../components/ui/Select";
 import { Modal } from "../components/ui/Modal";
 import { Badge } from "../components/ui/Badge";
@@ -12,7 +13,7 @@ import { FormActions, FormStack } from "../components/ui/FormStack";
 import { PhotoUpload } from "../components/PhotoUpload";
 import { StudentPhoto } from "../components/StudentPhoto";
 import { StudentActionIcons } from "../components/StudentActionIcons";
-import { formatGender, GENDER_OPTIONS } from "../lib/student";
+import { filterStudents, formatGender, GENDER_OPTIONS } from "../lib/student";
 import type { Gender, Student } from "../types";
 
 type BranchStudentsBasePath = "/manager" | "/user";
@@ -35,23 +36,19 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("male");
+  const [schoolName, setSchoolName] = useState("");
+  const [phone, setPhone] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
 
-  const branchStudents = useMemo(() => {
-    const list = branchId ? students.filter((s) => s.branchId === branchId) : [];
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.rollNumber.toLowerCase().includes(q) ||
-        s.class.toLowerCase().includes(q),
-    );
-  }, [students, branchId, search]);
+  const branchList = useMemo(
+    () => (branchId ? students.filter((s) => s.branchId === branchId) : []),
+    [students, branchId],
+  );
 
-  const openProfile = (studentId: string) => {
-    navigate(`${basePath}/students/${studentId}`);
-  };
+  const branchStudents = useMemo(
+    () => filterStudents(branchList, search),
+    [branchList, search],
+  );
 
   const openQr = (studentId: string) => {
     navigate(`${basePath}/students/${studentId}/qr`);
@@ -68,6 +65,8 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     setRollNumber("");
     setStudentClass("");
     setGender("male");
+    setSchoolName("");
+    setPhone("");
     setPhoto(undefined);
     setEditing(null);
   };
@@ -88,6 +87,8 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     setRollNumber(s.rollNumber);
     setStudentClass(s.class);
     setGender(s.gender);
+    setSchoolName(s.schoolName);
+    setPhone(s.phone);
     setPhoto(s.photo);
     setFormOpen(true);
   };
@@ -102,6 +103,8 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           rollNumber: rollNumber.trim(),
           class: studentClass.trim(),
           gender,
+          schoolName: schoolName.trim(),
+          phone: phone.trim(),
           photo: photo || undefined,
         });
         closeForm();
@@ -112,6 +115,8 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           rollNumber: rollNumber.trim(),
           class: studentClass.trim(),
           gender,
+          schoolName: schoolName.trim(),
+          phone: phone.trim(),
           photo,
         });
         closeForm();
@@ -142,12 +147,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
         }
       />
 
-      <Input
-        label="Search"
-        placeholder="Name, roll number, or class"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      <StudentSearchField value={search} onChange={setSearch} students={branchList} />
 
       <div className="space-y-3">
         {branchStudents.map((s) => (
@@ -156,7 +156,6 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
             actions={
               <StudentActionIcons
                 compact
-                onView={() => openProfile(s.id)}
                 onEdit={() => openEdit(s)}
                 onQr={() => openQr(s.id)}
                 onDelete={() => remove(s)}
@@ -170,6 +169,10 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
                 <p className="text-sm text-mist">
                   Roll: {s.rollNumber} · Class: {s.class}
                 </p>
+                {s.schoolName && (
+                  <p className="text-sm text-mist">School: {s.schoolName}</p>
+                )}
+                {s.phone && <p className="text-sm text-mist">Phone: {s.phone}</p>}
                 <p className="text-sm text-mist">Gender: {formatGender(s.gender)}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {!s.active && <Badge tone="neutral">Inactive</Badge>}
@@ -211,6 +214,8 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input
             label="Roll number"
+            type="number"
+            inputMode="numeric"
             value={rollNumber}
             onChange={(e) => setRollNumber(e.target.value)}
             placeholder="e.g. NV-003"
@@ -222,6 +227,17 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
             onChange={(e) => setStudentClass(e.target.value)}
             placeholder="e.g. 10-A"
             required
+          />
+          <Input
+            label="School name"
+            value={schoolName}
+            onChange={(e) => setSchoolName(e.target.value)}
+          />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
           />
           <Select
             label="Gender"

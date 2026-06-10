@@ -41,7 +41,7 @@ export function Modal({ open, onClose, title, children, footer, wide }: ModalPro
 
       <div
         className={`relative z-10 flex w-full flex-col overflow-hidden rounded-t-2xl border border-morning bg-white shadow-xl sm:max-h-[min(90vh,720px)] sm:rounded-xl ${
-          wide ? "sm:max-w-lg" : "sm:max-w-md"
+          wide ? "sm:max-w-2xl" : "sm:max-w-md"
         }`}
         style={{ maxHeight: "min(92dvh, 100%)" }}
         role="dialog"

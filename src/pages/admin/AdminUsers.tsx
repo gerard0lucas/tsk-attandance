@@ -1,11 +1,21 @@
 import { useState } from "react";
+import { MapPin, Phone } from "lucide-react";
 import { useStore } from "../../store/useStore";
+import { PhotoUpload } from "../../components/PhotoUpload";
+import { StudentPhoto } from "../../components/StudentPhoto";
 import { Button } from "../../components/ui/Button";
 import { Card, CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
 import { Modal } from "../../components/ui/Modal";
 import { PageHeader } from "../../components/ui/PageHeader";
+import {
+  TableWrap,
+  tableActionsCell,
+  tableCell,
+  tableCellMuted,
+  tableHeadCell,
+} from "../../components/ui/TableWrap";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
 import type { BranchUser } from "../../types";
 
@@ -24,6 +34,9 @@ export function AdminUsers() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [photo, setPhoto] = useState<string | undefined>();
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -36,6 +49,9 @@ export function AdminUsers() {
     setName("");
     setEmail("");
     setPassword("");
+    setPhone("");
+    setAddress("");
+    setPhoto(undefined);
     setBranchId(branches[0]?.id ?? "");
     setEditing(null);
   };
@@ -44,10 +60,16 @@ export function AdminUsers() {
     if (!name.trim() || !email.trim() || !branchId) return;
     setSaving(true);
     try {
+      const profileFields = {
+        phone: phone.trim(),
+        address: address.trim(),
+        photo,
+      };
       if (editing) {
         await updateBranchUser(editing.id, {
           name: name.trim(),
           email: email.trim(),
+          ...profileFields,
         });
       } else {
         if (!password.trim()) return;
@@ -56,6 +78,7 @@ export function AdminUsers() {
           email: email.trim(),
           password: password.trim(),
           branchId,
+          ...profileFields,
         });
       }
       setOpen(false);
@@ -71,6 +94,9 @@ export function AdminUsers() {
     setEditing(u);
     setName(u.name);
     setEmail(u.email);
+    setPhone(u.phone);
+    setAddress(u.address);
+    setPhoto(u.photo);
     setBranchId(u.branchId || (branches[0]?.id ?? ""));
     setPassword("");
     setOpen(true);
@@ -133,54 +159,86 @@ export function AdminUsers() {
               </>
             }
           >
-            <p className="font-medium text-cerulean">{u.name}</p>
-            <p className="break-all text-sm text-mist">{u.email}</p>
-            <p className="text-sm text-mist">Branch: {getBranch(u.branchId)?.name ?? "—"}</p>
+            <div className="flex items-start gap-3">
+              <StudentPhoto student={{ name: u.name, photo: u.photo }} size="md" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-cerulean">{u.name}</p>
+                <p className="break-all text-sm text-mist">{u.email}</p>
+                <p className="text-sm text-mist">
+                  Branch: {getBranch(u.branchId)?.name ?? "—"}
+                </p>
+                {u.phone && (
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-mist">
+                    <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {u.phone}
+                  </p>
+                )}
+                {u.address && (
+                  <p className="mt-1 flex items-start gap-1.5 text-sm text-mist">
+                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {u.address}
+                  </p>
+                )}
+              </div>
+            </div>
           </CardRow>
         ))}
         {visibleUsers.length === 0 && <p className="text-sm text-mist">No users yet.</p>}
       </div>
 
       <Card padding="sm" className="hidden md:block">
-        <table className="w-full min-w-[520px]">
-          <thead>
-            <tr className="border-b border-morning text-left text-sm text-mist">
-              <th className="px-3 py-2 font-medium">Name</th>
-              <th className="px-3 py-2 font-medium">Email</th>
-              <th className="px-3 py-2 font-medium">Branch</th>
-              <th className="px-3 py-2 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleUsers.map((u) => (
-              <tr key={u.id} className="border-b border-morning last:border-0">
-                <td className="px-3 py-2 text-cerulean">{u.name}</td>
-                <td className="px-3 py-2 text-mist">{u.email}</td>
-                <td className="px-3 py-2 text-mist">{getBranch(u.branchId)?.name ?? "—"}</td>
-                <td className="px-3 py-2">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(u)}>
-                    Edit
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    className="ml-2"
-                    onClick={() => {
-                      if (confirm(`Remove ${u.name}?`)) void deleteBranchUser(u.id);
-                    }}
-                  >
-                    Delete
-                  </Button>
-                </td>
+        <TableWrap>
+          <table className="w-full min-w-[720px]">
+            <thead>
+              <tr className="border-b border-morning">
+                <th className={tableHeadCell}>User</th>
+                <th className={tableHeadCell}>Phone</th>
+                <th className={tableHeadCell}>Address</th>
+                <th className={tableHeadCell}>Branch</th>
+                <th className={tableHeadCell}>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {visibleUsers.length === 0 && <p className="px-3 py-4 text-sm text-mist">No users yet.</p>}
+            </thead>
+            <tbody>
+              {visibleUsers.map((u) => (
+                <tr key={u.id} className="border-b border-morning last:border-0">
+                  <td className={tableCell}>
+                    <div className="flex items-center gap-3">
+                      <StudentPhoto student={{ name: u.name, photo: u.photo }} size="sm" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-cerulean">{u.name}</p>
+                        <p className="truncate text-sm text-mist">{u.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className={tableCellMuted}>{u.phone || "—"}</td>
+                  <td className={tableCellMuted}>{u.address || "—"}</td>
+                  <td className={tableCellMuted}>{getBranch(u.branchId)?.name ?? "—"}</td>
+                  <td className={tableActionsCell}>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(u)}>
+                      Edit
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      className="ml-2"
+                      onClick={() => {
+                        if (confirm(`Remove ${u.name}?`)) void deleteBranchUser(u.id);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableWrap>
+        {visibleUsers.length === 0 && <p className="text-sm text-mist">No users yet.</p>}
       </Card>
 
       <Modal
         open={open}
+        wide
         onClose={() => { setOpen(false); reset(); }}
         title={editing ? "Edit user" : "New user"}
         footer={
@@ -195,13 +253,26 @@ export function AdminUsers() {
         }
       >
         <FormStack>
+          <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <Input
+            label="Address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
           <Select
             label="Branch"
             value={branchId}
             onChange={(e) => setBranchId(e.target.value)}
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
+            disabled={Boolean(editing)}
           />
           {!editing && (
             <Input

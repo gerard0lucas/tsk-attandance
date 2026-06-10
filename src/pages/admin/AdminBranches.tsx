@@ -1,12 +1,87 @@
 import { useState } from "react";
+import { LayoutGrid, LayoutList } from "lucide-react";
 import { useStore } from "../../store/useStore";
+import {
+  branchFromRecord,
+  branchListTitle,
+  emptyBranchInput,
+  type BranchInput,
+} from "../../lib/branch";
+import { BranchCard } from "../../components/BranchCard";
 import { Button } from "../../components/ui/Button";
-import { CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
 import type { Branch } from "../../types";
+
+type ViewMode = "list" | "grid";
+
+function trimBranchInput(data: BranchInput): BranchInput {
+  return {
+    name: data.name.trim(),
+    branchName: data.branchName.trim(),
+    city: data.city.trim(),
+    country: data.country.trim(),
+    address: data.address.trim(),
+    mapLocation: data.mapLocation.trim(),
+    contact1Name: data.contact1Name.trim(),
+    contact1Phone: data.contact1Phone.trim(),
+    contact2Name: data.contact2Name.trim(),
+    contact2Phone: data.contact2Phone.trim(),
+  };
+}
+
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <p className="border-b border-morning pb-1 text-xs font-semibold uppercase tracking-wide text-mist">
+      {children}
+    </p>
+  );
+}
+
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: ViewMode;
+  onChange: (view: ViewMode) => void;
+}) {
+  return (
+    <div
+      className="inline-flex rounded-lg border border-morning bg-white p-1"
+      role="group"
+      aria-label="Branch view"
+    >
+      <button
+        type="button"
+        onClick={() => onChange("list")}
+        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+          view === "list"
+            ? "bg-cerulean text-white"
+            : "text-mist hover:bg-morning/40 hover:text-cerulean"
+        }`}
+        aria-pressed={view === "list"}
+      >
+        <LayoutList className="h-4 w-4" aria-hidden />
+        List
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("grid")}
+        className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+          view === "grid"
+            ? "bg-cerulean text-white"
+            : "text-mist hover:bg-morning/40 hover:text-cerulean"
+        }`}
+        aria-pressed={view === "grid"}
+      >
+        <LayoutGrid className="h-4 w-4" aria-hidden />
+        Grid
+      </button>
+    </div>
+  );
+}
 
 export function AdminBranches() {
   const branches = useStore((s) => s.branches);
@@ -15,24 +90,34 @@ export function AdminBranches() {
   const updateBranch = useStore((s) => s.updateBranch);
   const deleteBranch = useStore((s) => s.deleteBranch);
 
+  const [view, setView] = useState<ViewMode>("grid");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
-  const [name, setName] = useState("");
-  const [location, setLocation] = useState("");
+  const [form, setForm] = useState<BranchInput>(emptyBranchInput());
+
+  const setField = <K extends keyof BranchInput>(key: K, value: BranchInput[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
 
   const reset = () => {
-    setName("");
-    setLocation("");
+    setForm(emptyBranchInput());
     setEditing(null);
   };
 
+  const openEdit = (branch: Branch) => {
+    setEditing(branch);
+    setForm(branchFromRecord(branch));
+    setOpen(true);
+  };
+
   const save = async () => {
-    if (!name.trim()) return;
+    const data = trimBranchInput(form);
+    if (!data.name) return;
     try {
       if (editing) {
-        await updateBranch(editing.id, { name: name.trim(), location: location.trim() });
+        await updateBranch(editing.id, data);
       } else {
-        await addBranch({ name: name.trim(), location: location.trim() });
+        await addBranch(data);
       }
       setOpen(false);
       reset();
@@ -48,50 +133,52 @@ export function AdminBranches() {
         action={<Button onClick={() => { reset(); setOpen(true); }}>Add branch</Button>}
       />
 
-      <div className="space-y-3">
-        {branches.map((b) => (
-          <CardRow
-            key={b.id}
-            actions={
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                  onClick={() => {
-                    setEditing(b);
-                    setName(b.name);
-                    setLocation(b.location);
-                    setOpen(true);
-                  }}
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  className="flex-1 sm:flex-none"
-                  onClick={() => {
-                    if (confirm(`Delete ${b.name}?`)) void deleteBranch(b.id);
-                  }}
-                >
-                  Delete
-                </Button>
-              </>
-            }
-          >
-            <p className="font-medium text-cerulean">{b.name}</p>
-            <p className="text-sm text-mist">{b.location || "—"}</p>
-            <p className="text-xs text-mist">
-              {students.filter((s) => s.branchId === b.id).length} students
-            </p>
-          </CardRow>
-        ))}
-        {branches.length === 0 && <p className="text-sm text-mist">No branches yet.</p>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-mist">
+          {branches.length} branch{branches.length === 1 ? "" : "es"}
+        </p>
+        {branches.length > 0 && <ViewToggle view={view} onChange={setView} />}
       </div>
+
+      {branches.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-morning bg-white px-6 py-12 text-center">
+          <p className="text-sm text-mist">No branches yet. Add your first branch to get started.</p>
+        </div>
+      ) : view === "grid" ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {branches.map((b) => (
+            <BranchCard
+              key={b.id}
+              branch={b}
+              studentCount={students.filter((s) => s.branchId === b.id).length}
+              view="grid"
+              onEdit={() => openEdit(b)}
+              onDelete={() => {
+                if (confirm(`Delete ${branchListTitle(b)}?`)) void deleteBranch(b.id);
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {branches.map((b) => (
+            <BranchCard
+              key={b.id}
+              branch={b}
+              studentCount={students.filter((s) => s.branchId === b.id).length}
+              view="list"
+              onEdit={() => openEdit(b)}
+              onDelete={() => {
+                if (confirm(`Delete ${branchListTitle(b)}?`)) void deleteBranch(b.id);
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       <Modal
         open={open}
+        wide
         onClose={() => {
           setOpen(false);
           reset();
@@ -102,15 +189,76 @@ export function AdminBranches() {
             <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>
               Cancel
             </Button>
-            <Button onClick={() => void save()}>
+            <Button onClick={() => void save()} disabled={!form.name.trim()}>
               {editing ? "Save" : "Create"}
             </Button>
           </FormActions>
         }
       >
         <FormStack>
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
-          <Input label="Location" value={location} onChange={(e) => setLocation(e.target.value)} />
+          <SectionTitle>Basic</SectionTitle>
+          <Input
+            label="Name"
+            value={form.name}
+            onChange={(e) => setField("name", e.target.value)}
+            required
+          />
+          <Input
+            label="Branch name"
+            value={form.branchName}
+            onChange={(e) => setField("branchName", e.target.value)}
+          />
+
+          <SectionTitle>Location</SectionTitle>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Input
+              label="City"
+              value={form.city}
+              onChange={(e) => setField("city", e.target.value)}
+            />
+            <Input
+              label="Country"
+              value={form.country}
+              onChange={(e) => setField("country", e.target.value)}
+            />
+          </div>
+          <Input
+            label="Address"
+            value={form.address}
+            onChange={(e) => setField("address", e.target.value)}
+          />
+          <Input
+            label="Map location"
+            value={form.mapLocation}
+            onChange={(e) => setField("mapLocation", e.target.value)}
+            placeholder="Google Maps link or coordinates"
+          />
+
+          <SectionTitle>Point of contact 1</SectionTitle>
+          <Input
+            label="Full name"
+            value={form.contact1Name}
+            onChange={(e) => setField("contact1Name", e.target.value)}
+          />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={form.contact1Phone}
+            onChange={(e) => setField("contact1Phone", e.target.value)}
+          />
+
+          <SectionTitle>Point of contact 2</SectionTitle>
+          <Input
+            label="Full name"
+            value={form.contact2Name}
+            onChange={(e) => setField("contact2Name", e.target.value)}
+          />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={form.contact2Phone}
+            onChange={(e) => setField("contact2Phone", e.target.value)}
+          />
         </FormStack>
       </Modal>
     </div>

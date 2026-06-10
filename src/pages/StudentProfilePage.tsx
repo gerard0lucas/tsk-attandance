@@ -51,6 +51,8 @@ export function StudentProfilePage() {
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("male");
+  const [schoolName, setSchoolName] = useState("");
+  const [phone, setPhone] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
 
   if (!studentId || !student) {
@@ -66,6 +68,8 @@ export function StudentProfilePage() {
     setRollNumber(student.rollNumber);
     setStudentClass(student.class);
     setGender(student.gender);
+    setSchoolName(student.schoolName);
+    setPhone(student.phone);
     setPhoto(student.photo);
     setFormOpen(true);
   };
@@ -79,6 +83,8 @@ export function StudentProfilePage() {
         rollNumber: rollNumber.trim(),
         class: studentClass.trim(),
         gender,
+        schoolName: schoolName.trim(),
+        phone: phone.trim(),
         photo: photo || undefined,
       });
       setFormOpen(false);
@@ -206,6 +212,18 @@ export function StudentProfilePage() {
               <span className="text-mist">Class:</span>{" "}
               <span className="text-cerulean">{student.class}</span>
             </p>
+            {student.schoolName && (
+              <p>
+                <span className="text-mist">School:</span>{" "}
+                <span className="text-cerulean">{student.schoolName}</span>
+              </p>
+            )}
+            {student.phone && (
+              <p>
+                <span className="text-mist">Phone:</span>{" "}
+                <span className="text-cerulean">{student.phone}</span>
+              </p>
+            )}
             <p>
               <span className="text-mist">Gender:</span>{" "}
               <span className="text-cerulean">{formatGender(student.gender)}</span>
@@ -261,6 +279,8 @@ export function StudentProfilePage() {
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input
             label="Roll number"
+            type="number"
+            inputMode="numeric"
             value={rollNumber}
             onChange={(e) => setRollNumber(e.target.value)}
             required
@@ -270,6 +290,17 @@ export function StudentProfilePage() {
             value={studentClass}
             onChange={(e) => setStudentClass(e.target.value)}
             required
+          />
+          <Input
+            label="School name"
+            value={schoolName}
+            onChange={(e) => setSchoolName(e.target.value)}
+          />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
           />
           <Select
             label="Gender"

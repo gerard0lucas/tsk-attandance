@@ -6,13 +6,25 @@ export type ProfileRow = {
   name: string;
   role: "admin" | "manager" | "user";
   branch_id: string | null;
+  phone?: string;
+  photo_url?: string | null;
+  address?: string;
   created_at: string;
 };
 
 export type BranchRow = {
   id: string;
   name: string;
-  location: string;
+  location?: string;
+  branch_name?: string;
+  city?: string;
+  country?: string;
+  address?: string;
+  map_location?: string;
+  contact1_name?: string;
+  contact1_phone?: string;
+  contact2_name?: string;
+  contact2_phone?: string;
   created_at: string;
 };
 
@@ -23,6 +35,8 @@ export type StudentRow = {
   roll_number: string;
   class: string;
   gender: Student["gender"];
+  school_name?: string;
+  phone?: string;
   photo_url: string | null;
   qr_token: string;
   active: boolean;
@@ -42,9 +56,43 @@ export function toBranch(row: BranchRow): Branch {
   return {
     id: row.id,
     name: row.name,
-    location: row.location ?? "",
+    branchName: row.branch_name ?? "",
+    city: row.city ?? "",
+    country: row.country ?? "",
+    address: row.address ?? row.location ?? "",
+    mapLocation: row.map_location ?? "",
+    contact1Name: row.contact1_name ?? "",
+    contact1Phone: row.contact1_phone ?? "",
+    contact2Name: row.contact2_name ?? "",
+    contact2Phone: row.contact2_phone ?? "",
     createdAt: row.created_at,
   };
+}
+
+export function branchToRow(data: {
+  name?: string;
+  branchName?: string;
+  city?: string;
+  country?: string;
+  address?: string;
+  mapLocation?: string;
+  contact1Name?: string;
+  contact1Phone?: string;
+  contact2Name?: string;
+  contact2Phone?: string;
+}): Record<string, string> {
+  const row: Record<string, string> = {};
+  if (data.name !== undefined) row.name = data.name;
+  if (data.branchName !== undefined) row.branch_name = data.branchName;
+  if (data.city !== undefined) row.city = data.city;
+  if (data.country !== undefined) row.country = data.country;
+  if (data.address !== undefined) row.address = data.address;
+  if (data.mapLocation !== undefined) row.map_location = data.mapLocation;
+  if (data.contact1Name !== undefined) row.contact1_name = data.contact1Name;
+  if (data.contact1Phone !== undefined) row.contact1_phone = data.contact1Phone;
+  if (data.contact2Name !== undefined) row.contact2_name = data.contact2Name;
+  if (data.contact2Phone !== undefined) row.contact2_phone = data.contact2Phone;
+  return row;
 }
 
 export function toManager(row: ProfileRow): Manager {
@@ -53,6 +101,9 @@ export function toManager(row: ProfileRow): Manager {
     name: row.name,
     email: row.email,
     branchId: row.branch_id ?? "",
+    phone: row.phone ?? "",
+    photo: row.photo_url ?? undefined,
+    address: row.address ?? "",
     createdAt: row.created_at,
   };
 }
@@ -63,6 +114,9 @@ export function toBranchUser(row: ProfileRow): BranchUser {
     name: row.name,
     email: row.email,
     branchId: row.branch_id ?? "",
+    phone: row.phone ?? "",
+    photo: row.photo_url ?? undefined,
+    address: row.address ?? "",
     createdAt: row.created_at,
   };
 }
@@ -75,6 +129,8 @@ export function toStudent(row: StudentRow): Student {
     rollNumber: row.roll_number,
     class: row.class,
     gender: row.gender,
+    schoolName: row.school_name ?? "",
+    phone: row.phone ?? "",
     photo: row.photo_url ?? undefined,
     qrToken: row.qr_token,
     active: row.active,

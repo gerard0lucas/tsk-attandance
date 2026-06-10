@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
@@ -7,7 +8,10 @@ import { AdminBranches } from "./pages/admin/AdminBranches";
 import { AdminManagers } from "./pages/admin/AdminManagers";
 import { AdminStudents } from "./pages/admin/AdminStudents";
 import { AdminUsers } from "./pages/admin/AdminUsers";
-import { ReportsPage } from "./pages/ReportsPage";
+
+const ReportsPage = lazy(() =>
+  import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
+);
 import { ManagerDashboard } from "./pages/manager/ManagerDashboard";
 import { ManagerScan } from "./pages/manager/ManagerScan";
 import { ManagerStudents } from "./pages/manager/ManagerStudents";
@@ -33,6 +37,22 @@ const homePath: Record<UserRole, string> = {
   manager: "/manager",
   user: "/user",
 };
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center">
+      <p className="text-sm text-mist">Loading page…</p>
+    </div>
+  );
+}
+
+function ReportsRoute() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <ReportsPage />
+    </Suspense>
+  );
+}
 
 function AuthEntry() {
   const hydrated = useStoreHydrated();
@@ -97,7 +117,7 @@ export default function App() {
           <Route path="scan" element={<ScanPage />} />
           <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports" element={<ReportsRoute />} />
         </Route>
 
         <Route
@@ -115,7 +135,7 @@ export default function App() {
           <Route path="users" element={<ManagerUsers />} />
           <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports" element={<ReportsRoute />} />
         </Route>
 
         <Route
@@ -132,7 +152,7 @@ export default function App() {
           <Route path="students/:studentId" element={<StudentProfilePage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
           <Route path="attendance" element={<AttendanceEditPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="reports" element={<ReportsRoute />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -9,6 +9,7 @@ import type {
   Session,
   Student,
 } from "../../types";
+import type { BranchInput } from "../branch";
 import { fetchSessionProfile } from "../session";
 import {
   toAttendance,
@@ -16,12 +17,13 @@ import {
   toBranchUser,
   toManager,
   toStudent,
+  branchToRow,
   type AttendanceRow,
   type BranchRow,
   type ProfileRow,
   type StudentRow,
 } from "./mappers";
-import { isDataUrl, removeStudentPhoto, uploadStudentPhoto } from "../storage";
+import { isDataUrl, removeStudentPhoto, uploadStudentPhoto, uploadProfilePhoto, removeProfilePhoto } from "../storage";
 import { pauseAuthSync, resumeAuthSync } from "../authSync";
 import { getDbErrorMessage, isMissingBranchIdColumn } from "./errors";
 
@@ -70,21 +72,18 @@ export async function fetchAllData(): Promise<{
   };
 }
 
-export async function insertBranch(data: { name: string; location: string }): Promise<Branch> {
+export async function insertBranch(data: BranchInput): Promise<Branch> {
   const { data: row, error } = await supabase
     .from("branches")
-    .insert({ name: data.name, location: data.location })
+    .insert(branchToRow(data))
     .select()
     .single();
   if (error) throw error;
   return toBranch(row as BranchRow);
 }
 
-export async function patchBranch(
-  id: string,
-  data: Partial<{ name: string; location: string }>,
-): Promise<void> {
-  const { error } = await supabase.from("branches").update(data).eq("id", id);
+export async function patchBranch(id: string, data: Partial<BranchInput>): Promise<void> {
+  const { error } = await supabase.from("branches").update(branchToRow(data)).eq("id", id);
   if (error) throw error;
 }
 
@@ -170,22 +169,71 @@ async function createStaffAccount(input: {
   }
 }
 
+async function resolveProfilePhoto(
+  profileId: string,
+  photo: string | undefined,
+): Promise<string | null | undefined> {
+  if (photo === undefined) return undefined;
+  if (!photo) {
+    await removeProfilePhoto(profileId).catch(() => undefined);
+    return null;
+  }
+  if (isDataUrl(photo)) {
+    return uploadProfilePhoto(profileId, photo);
+  }
+  return photo;
+}
+
+async function applyProfileExtraFields(
+  profileId: string,
+  data: { phone?: string; address?: string; photo?: string },
+): Promise<ProfileRow> {
+  const payload: Record<string, unknown> = {};
+  if (data.phone !== undefined) payload.phone = data.phone;
+  if (data.address !== undefined) payload.address = data.address;
+  if (data.photo !== undefined) {
+    payload.photo_url = await resolveProfilePhoto(profileId, data.photo);
+  }
+  if (Object.keys(payload).length === 0) return fetchProfileById(profileId);
+
+  const { data: row, error } = await supabase
+    .from("profiles")
+    .update(payload)
+    .eq("id", profileId)
+    .select()
+    .single();
+  if (error) throw error;
+  return row as ProfileRow;
+}
+
 export async function createManagerAccount(input: {
   name: string;
   email: string;
   password: string;
   branchId: string;
+  phone?: string;
+  address?: string;
+  photo?: string;
 }): Promise<Manager> {
   const profile = await createStaffAccount({ ...input, role: "manager" });
+  let updated = profile;
+
   if (!profile.branch_id && input.branchId) {
     const { error } = await supabase
       .from("profiles")
       .update({ branch_id: input.branchId })
       .eq("id", profile.id);
-    if (!error) return toManager({ ...profile, branch_id: input.branchId });
-    if (!isMissingBranchIdColumn(getDbErrorMessage(error))) throw error;
+    if (!error) updated = { ...profile, branch_id: input.branchId };
+    else if (!isMissingBranchIdColumn(getDbErrorMessage(error))) throw error;
   }
-  return toManager(profile);
+
+  updated = await applyProfileExtraFields(profile.id, {
+    phone: input.phone ?? "",
+    address: input.address ?? "",
+    photo: input.photo,
+  });
+
+  return toManager(updated);
 }
 
 export async function createBranchUserAccount(input: {
@@ -193,17 +241,33 @@ export async function createBranchUserAccount(input: {
   email: string;
   password: string;
   branchId: string;
+  phone?: string;
+  address?: string;
+  photo?: string;
 }): Promise<BranchUser> {
   const profile = await createStaffAccount({ ...input, role: "user" });
+  let updated = profile;
+
   if (!profile.branch_id && input.branchId) {
     const { error } = await supabase
       .from("profiles")
       .update({ branch_id: input.branchId, role: "user" })
       .eq("id", profile.id);
-    if (!error) return toBranchUser({ ...profile, branch_id: input.branchId, role: "user" });
-    if (!isMissingBranchIdColumn(getDbErrorMessage(error))) throw error;
+    if (!error) updated = { ...profile, branch_id: input.branchId, role: "user" };
+    else if (!isMissingBranchIdColumn(getDbErrorMessage(error))) throw error;
+  } else if (profile.branch_id) {
+    updated = profile;
+  } else {
+    updated = { ...profile, branch_id: input.branchId };
   }
-  return toBranchUser(profile.branch_id ? profile : { ...profile, branch_id: input.branchId });
+
+  updated = await applyProfileExtraFields(profile.id, {
+    phone: input.phone ?? "",
+    address: input.address ?? "",
+    photo: input.photo,
+  });
+
+  return toBranchUser(updated);
 }
 
 export async function fetchAdminSessionAfterManagerCreate(): Promise<Session | null> {
@@ -214,11 +278,20 @@ export type PatchManagerResult = { branchAssigned: boolean };
 
 export async function patchManager(
   id: string,
-  data: Partial<{ name: string; email: string; branchId: string }>,
+  data: Partial<{
+    name: string;
+    email: string;
+    branchId: string;
+    phone: string;
+    address: string;
+    photo: string;
+  }>,
 ): Promise<PatchManagerResult> {
   const base: Record<string, unknown> = {};
   if (data.name !== undefined) base.name = data.name;
   if (data.email !== undefined) base.email = data.email;
+  if (data.phone !== undefined) base.phone = data.phone;
+  if (data.address !== undefined) base.address = data.address;
 
   const wantsBranch = Boolean(data.branchId);
 
@@ -227,7 +300,10 @@ export async function patchManager(
       .from("profiles")
       .update({ ...base, branch_id: data.branchId })
       .eq("id", id);
-    if (!error) return { branchAssigned: true };
+    if (!error) {
+      if (data.photo !== undefined) await applyProfileExtraFields(id, { photo: data.photo });
+      return { branchAssigned: true };
+    }
     if (!isMissingBranchIdColumn(getDbErrorMessage(error))) throw error;
   }
 
@@ -236,15 +312,37 @@ export async function patchManager(
     if (error) throw error;
   }
 
+  if (data.photo !== undefined) {
+    await applyProfileExtraFields(id, { photo: data.photo });
+  }
+
   return { branchAssigned: !wantsBranch };
 }
 
 export async function patchBranchUser(
   id: string,
-  data: Partial<{ name: string; email: string }>,
+  data: Partial<{
+    name: string;
+    email: string;
+    phone: string;
+    address: string;
+    photo: string;
+  }>,
 ): Promise<void> {
-  const { error } = await supabase.from("profiles").update(data).eq("id", id);
-  if (error) throw error;
+  const base: Record<string, unknown> = {};
+  if (data.name !== undefined) base.name = data.name;
+  if (data.email !== undefined) base.email = data.email;
+  if (data.phone !== undefined) base.phone = data.phone;
+  if (data.address !== undefined) base.address = data.address;
+
+  if (Object.keys(base).length > 0) {
+    const { error } = await supabase.from("profiles").update(base).eq("id", id);
+    if (error) throw error;
+  }
+
+  if (data.photo !== undefined) {
+    await applyProfileExtraFields(id, { photo: data.photo });
+  }
 }
 
 export async function removeManager(id: string): Promise<void> {
@@ -278,6 +376,8 @@ export async function insertStudent(data: {
   rollNumber: string;
   class: string;
   gender: Student["gender"];
+  schoolName?: string;
+  phone?: string;
   photo?: string;
 }): Promise<Student> {
   const qrToken = generateQrToken();
@@ -289,6 +389,8 @@ export async function insertStudent(data: {
       roll_number: data.rollNumber,
       class: data.class,
       gender: data.gender,
+      school_name: data.schoolName ?? "",
+      phone: data.phone ?? "",
       qr_token: qrToken,
       active: true,
     })
@@ -323,6 +425,8 @@ export async function patchStudent(
     rollNumber: string;
     class: string;
     gender: Student["gender"];
+    schoolName: string;
+    phone: string;
     active: boolean;
     photo?: string;
   }>,
@@ -333,6 +437,8 @@ export async function patchStudent(
   if (data.rollNumber !== undefined) payload.roll_number = data.rollNumber;
   if (data.class !== undefined) payload.class = data.class;
   if (data.gender !== undefined) payload.gender = data.gender;
+  if (data.schoolName !== undefined) payload.school_name = data.schoolName;
+  if (data.phone !== undefined) payload.phone = data.phone;
   if (data.active !== undefined) payload.active = data.active;
 
   if (data.photo !== undefined) {

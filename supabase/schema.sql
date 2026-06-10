@@ -1,4 +1,4 @@
--- TSK Attendance — run in Supabase SQL Editor (Dashboard → SQL → New query)
+-- Harimandir Balopana Attendence — run in Supabase SQL Editor (Dashboard → SQL → New query)
 
 -- Extensions
 create extension if not exists "pgcrypto";
@@ -7,7 +7,15 @@ create extension if not exists "pgcrypto";
 create table if not exists public.branches (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  location text not null default '',
+  branch_name text not null default '',
+  city text not null default '',
+  country text not null default '',
+  address text not null default '',
+  map_location text not null default '',
+  contact1_name text not null default '',
+  contact1_phone text not null default '',
+  contact2_name text not null default '',
+  contact2_phone text not null default '',
   created_at timestamptz not null default now()
 );
 
@@ -18,6 +26,9 @@ create table if not exists public.profiles (
   name text not null,
   role text not null check (role in ('admin', 'manager', 'user')),
   branch_id uuid references public.branches (id) on delete set null,
+  phone text not null default '',
+  photo_url text,
+  address text not null default '',
   created_at timestamptz not null default now()
 );
 
@@ -29,6 +40,8 @@ create table if not exists public.students (
   roll_number text not null,
   class text not null,
   gender text not null check (gender in ('male', 'female', 'other')),
+  school_name text not null default '',
+  phone text not null default '',
   photo_url text,
   qr_token text not null,
   active boolean not null default true,

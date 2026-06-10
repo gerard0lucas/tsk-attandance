@@ -1,5 +1,8 @@
 import { useState } from "react";
+import { MapPin, Phone } from "lucide-react";
 import { useStore } from "../../store/useStore";
+import { PhotoUpload } from "../../components/PhotoUpload";
+import { StudentPhoto } from "../../components/StudentPhoto";
 import { Button } from "../../components/ui/Button";
 import { CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
@@ -24,12 +27,18 @@ export function ManagerUsers() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [photo, setPhoto] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
 
   const reset = () => {
     setName("");
     setEmail("");
     setPassword("");
+    setPhone("");
+    setAddress("");
+    setPhoto(undefined);
     setEditing(null);
   };
 
@@ -37,10 +46,16 @@ export function ManagerUsers() {
     if (!name.trim() || !email.trim() || !branchId) return;
     setSaving(true);
     try {
+      const profileFields = {
+        phone: phone.trim(),
+        address: address.trim(),
+        photo,
+      };
       if (editing) {
         await updateBranchUser(editing.id, {
           name: name.trim(),
           email: email.trim(),
+          ...profileFields,
         });
       } else {
         if (!password.trim()) return;
@@ -49,6 +64,7 @@ export function ManagerUsers() {
           email: email.trim(),
           password: password.trim(),
           branchId,
+          ...profileFields,
         });
       }
       setOpen(false);
@@ -64,6 +80,9 @@ export function ManagerUsers() {
     setEditing(u);
     setName(u.name);
     setEmail(u.email);
+    setPhone(u.phone);
+    setAddress(u.address);
+    setPhoto(u.photo);
     setPassword("");
     setOpen(true);
   };
@@ -112,8 +131,25 @@ export function ManagerUsers() {
               </>
             }
           >
-            <p className="font-medium text-cerulean">{u.name}</p>
-            <p className="break-all text-sm text-mist">{u.email}</p>
+            <div className="flex items-start gap-3">
+              <StudentPhoto student={{ name: u.name, photo: u.photo }} size="md" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-cerulean">{u.name}</p>
+                <p className="break-all text-sm text-mist">{u.email}</p>
+                {u.phone && (
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-mist">
+                    <Phone className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {u.phone}
+                  </p>
+                )}
+                {u.address && (
+                  <p className="mt-1 flex items-start gap-1.5 text-sm text-mist">
+                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                    {u.address}
+                  </p>
+                )}
+              </div>
+            </div>
           </CardRow>
         ))}
         {branchUsers.length === 0 && (
@@ -123,6 +159,7 @@ export function ManagerUsers() {
 
       <Modal
         open={open}
+        wide
         onClose={() => { setOpen(false); reset(); }}
         title={editing ? "Edit user" : "New user"}
         footer={
@@ -137,8 +174,20 @@ export function ManagerUsers() {
         }
       >
         <FormStack>
+          <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+          <Input
+            label="Address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
           {!editing && (
             <Input
               label="Password"

@@ -1,4 +1,5 @@
 import type { Gender, Student } from "../types";
+import { buildQrPayload, parseQrPayload } from "./qr";
 
 export const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: "male", label: "Male" },
@@ -17,6 +18,30 @@ export function studentInitials(name: string): string {
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
 
+export function filterStudents(students: Student[], query: string): Student[] {
+  const q = query.trim();
+  if (!q) return students;
+
+  const parsed = parseQrPayload(q);
+  if (parsed) {
+    return students.filter((s) => s.id === parsed.sid && s.qrToken === parsed.tok);
+  }
+
+  const lower = q.toLowerCase();
+  return students.filter((s) => {
+    const qrText = buildQrPayload(s).toLowerCase();
+    return (
+      s.name.toLowerCase().includes(lower) ||
+      s.rollNumber.toLowerCase().includes(lower) ||
+      s.phone.toLowerCase().includes(lower) ||
+      s.schoolName.toLowerCase().includes(lower) ||
+      s.qrToken.toLowerCase().includes(lower) ||
+      s.id.toLowerCase().includes(lower) ||
+      qrText.includes(lower)
+    );
+  });
+}
+
 export function normalizeStudentFields(student: Partial<Student> & { id: string }): Student {
   const raw = student as Student & { templeId?: string };
   const gender =
@@ -31,6 +56,8 @@ export function normalizeStudentFields(student: Partial<Student> & { id: string 
     rollNumber: raw.rollNumber?.trim() || "—",
     class: raw.class?.trim() || "—",
     gender,
+    schoolName: raw.schoolName?.trim() || "",
+    phone: raw.phone?.trim() || "",
     photo: raw.photo || undefined,
     qrToken: raw.qrToken ?? "",
     active: raw.active !== false,

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { Card, CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
+import { StudentSearchField } from "../../components/StudentSearchField";
 import { Select } from "../../components/ui/Select";
 import { Badge } from "../../components/ui/Badge";
 import { Modal } from "../../components/ui/Modal";
@@ -19,7 +20,7 @@ import {
 import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
 import { StudentActionIcons } from "../../components/StudentActionIcons";
-import { formatGender, GENDER_OPTIONS } from "../../lib/student";
+import { filterStudents, formatGender, GENDER_OPTIONS } from "../../lib/student";
 import type { Gender, Student } from "../../types";
 
 export function AdminStudents() {
@@ -32,21 +33,28 @@ export function AdminStudents() {
   const deleteStudent = useStore((s) => s.deleteStudent);
   const isPresentToday = useStore((s) => s.isPresentToday);
   const [filterBranch, setFilterBranch] = useState("all");
+  const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("male");
+  const [schoolName, setSchoolName] = useState("");
+  const [phone, setPhone] = useState("");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [photo, setPhoto] = useState<string | undefined>();
 
-  const filtered =
-    filterBranch === "all" ? students : students.filter((s) => s.branchId === filterBranch);
+  const branchFiltered = useMemo(
+    () =>
+      filterBranch === "all" ? students : students.filter((s) => s.branchId === filterBranch),
+    [students, filterBranch],
+  );
 
-  const openProfile = (studentId: string) => {
-    navigate(`/admin/students/${studentId}`);
-  };
+  const filtered = useMemo(
+    () => filterStudents(branchFiltered, search),
+    [branchFiltered, search],
+  );
 
   const openQr = (studentId: string) => {
     navigate(`/admin/students/${studentId}/qr`);
@@ -57,6 +65,8 @@ export function AdminStudents() {
     setRollNumber("");
     setStudentClass("");
     setGender("male");
+    setSchoolName("");
+    setPhone("");
     setBranchId(branches[0]?.id ?? "");
     setPhoto(undefined);
     setEditing(null);
@@ -78,6 +88,8 @@ export function AdminStudents() {
     setRollNumber(s.rollNumber);
     setStudentClass(s.class);
     setGender(s.gender);
+    setSchoolName(s.schoolName);
+    setPhone(s.phone);
     setBranchId(s.branchId);
     setPhoto(s.photo);
     setFormOpen(true);
@@ -93,6 +105,8 @@ export function AdminStudents() {
           rollNumber: rollNumber.trim(),
           class: studentClass.trim(),
           gender,
+          schoolName: schoolName.trim(),
+          phone: phone.trim(),
           photo: photo || undefined,
         });
         closeForm();
@@ -103,6 +117,8 @@ export function AdminStudents() {
           rollNumber: rollNumber.trim(),
           class: studentClass.trim(),
           gender,
+          schoolName: schoolName.trim(),
+          phone: phone.trim(),
           photo,
         });
         closeForm();
@@ -144,6 +160,12 @@ export function AdminStudents() {
         ]}
       />
 
+      <StudentSearchField
+        value={search}
+        onChange={setSearch}
+        students={branchFiltered}
+      />
+
       <div className="space-y-3 md:hidden">
         {filtered.map((s) => (
           <StudentCard
@@ -151,24 +173,29 @@ export function AdminStudents() {
             student={s}
             branchName={getBranch(s.branchId)?.name}
             present={isPresentToday(s.id)}
-            onView={() => openProfile(s.id)}
             onEdit={() => openEdit(s)}
             onQr={() => openQr(s.id)}
             onDelete={() => remove(s)}
           />
         ))}
-        {filtered.length === 0 && <p className="text-sm text-mist">No students found.</p>}
+        {filtered.length === 0 && (
+          <p className="text-sm text-mist">
+            {search ? "No students match your search." : "No students found."}
+          </p>
+        )}
       </div>
 
       <Card padding="sm" className="hidden md:block">
         <TableWrap>
-          <table className="w-full min-w-[880px]">
+          <table className="w-full min-w-[1040px]">
             <thead>
               <tr className="border-b border-morning">
                 <th className={tableHeadCell}>Photo</th>
                 <th className={tableHeadCell}>Name</th>
                 <th className={tableHeadCell}>Roll</th>
                 <th className={tableHeadCell}>Class</th>
+                <th className={tableHeadCell}>School</th>
+                <th className={tableHeadCell}>Phone</th>
                 <th className={tableHeadCell}>Gender</th>
                 <th className={tableHeadCell}>Branch</th>
                 <th className={tableHeadCell}>Today</th>
@@ -182,7 +209,6 @@ export function AdminStudents() {
                   student={s}
                   branchName={getBranch(s.branchId)?.name}
                   present={isPresentToday(s.id)}
-                  onView={() => openProfile(s.id)}
                   onEdit={() => openEdit(s)}
                   onQr={() => openQr(s.id)}
                   onDelete={() => remove(s)}
@@ -191,7 +217,11 @@ export function AdminStudents() {
             </tbody>
           </table>
         </TableWrap>
-        {filtered.length === 0 && <p className="text-sm text-mist">No students found.</p>}
+        {filtered.length === 0 && (
+          <p className="text-sm text-mist">
+            {search ? "No students match your search." : "No students found."}
+          </p>
+        )}
       </Card>
 
       <Modal
@@ -215,6 +245,8 @@ export function AdminStudents() {
           <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input
             label="Roll number"
+            type="number"
+            inputMode="numeric"
             value={rollNumber}
             onChange={(e) => setRollNumber(e.target.value)}
             placeholder="e.g. NV-003"
@@ -226,6 +258,17 @@ export function AdminStudents() {
             onChange={(e) => setStudentClass(e.target.value)}
             placeholder="e.g. 10-A"
             required
+          />
+          <Input
+            label="School name"
+            value={schoolName}
+            onChange={(e) => setSchoolName(e.target.value)}
+          />
+          <Input
+            label="Phone number"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
           />
           <Select
             label="Gender"
@@ -250,7 +293,6 @@ function StudentCard({
   student,
   branchName,
   present,
-  onView,
   onEdit,
   onQr,
   onDelete,
@@ -258,7 +300,6 @@ function StudentCard({
   student: Student;
   branchName?: string;
   present: boolean;
-  onView: () => void;
   onEdit: () => void;
   onQr: () => void;
   onDelete: () => void;
@@ -268,7 +309,6 @@ function StudentCard({
       actions={
         <StudentActionIcons
           compact
-          onView={onView}
           onEdit={onEdit}
           onQr={onQr}
           onDelete={onDelete}
@@ -280,6 +320,10 @@ function StudentCard({
         <div className="min-w-0">
           <p className="font-medium text-cerulean">{student.name}</p>
           <p className="text-sm text-mist">Roll: {student.rollNumber} · Class: {student.class}</p>
+          {student.schoolName && (
+            <p className="text-sm text-mist">School: {student.schoolName}</p>
+          )}
+          {student.phone && <p className="text-sm text-mist">Phone: {student.phone}</p>}
           <p className="text-sm text-mist">Gender: {formatGender(student.gender)}</p>
           <p className="text-sm text-mist">Branch: {branchName}</p>
           <div className="mt-2">
@@ -295,7 +339,6 @@ function StudentRow({
   student,
   branchName,
   present,
-  onView,
   onEdit,
   onQr,
   onDelete,
@@ -303,7 +346,6 @@ function StudentRow({
   student: Student;
   branchName?: string;
   present: boolean;
-  onView: () => void;
   onEdit: () => void;
   onQr: () => void;
   onDelete: () => void;
@@ -316,6 +358,8 @@ function StudentRow({
       <td className={tableCell}>{student.name}</td>
       <td className={tableCellMuted}>{student.rollNumber}</td>
       <td className={tableCell}>{student.class}</td>
+      <td className={tableCellMuted}>{student.schoolName || "—"}</td>
+      <td className={tableCellMuted}>{student.phone || "—"}</td>
       <td className={tableCell}>{formatGender(student.gender)}</td>
       <td className={tableCellMuted}>{branchName}</td>
       <td className={tableCell}>
@@ -324,7 +368,6 @@ function StudentRow({
       <td className={tableActionsCell}>
         <StudentActionIcons
           compact
-          onView={onView}
           onEdit={onEdit}
           onQr={onQr}
           onDelete={onDelete}

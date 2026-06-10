@@ -11,13 +11,14 @@ function toSession(row: ProfileRow): Session | null {
     userId: row.id,
     name: row.name,
     branchId: row.branch_id ?? undefined,
+    photo: row.photo_url ?? undefined,
   };
 }
 
 async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
   const withBranch = await supabase
     .from("profiles")
-    .select("id, email, name, role, branch_id, created_at")
+    .select("id, email, name, role, branch_id, photo_url, created_at")
     .eq("id", userId)
     .single();
 
@@ -28,7 +29,7 @@ async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
   if (withBranch.error?.message?.includes("branch_id")) {
     const basic = await supabase
       .from("profiles")
-      .select("id, email, name, role, created_at")
+      .select("id, email, name, role, photo_url, created_at")
       .eq("id", userId)
       .single();
     if (!basic.error && basic.data) {

@@ -42,10 +42,20 @@ interface AppState {
     email: string;
     password: string;
     branchId: string;
+    phone?: string;
+    address?: string;
+    photo?: string;
   }) => Promise<Manager>;
   updateManager: (
     id: string,
-    data: Partial<{ name: string; email: string; branchId: string }>,
+    data: Partial<{
+      name: string;
+      email: string;
+      branchId: string;
+      phone: string;
+      address: string;
+      photo: string;
+    }>,
   ) => Promise<{ branchAssigned: boolean }>;
   deleteManager: (id: string) => Promise<void>;
 
@@ -54,10 +64,19 @@ interface AppState {
     email: string;
     password: string;
     branchId: string;
+    phone?: string;
+    address?: string;
+    photo?: string;
   }) => Promise<BranchUser>;
   updateBranchUser: (
     id: string,
-    data: Partial<{ name: string; email: string }>,
+    data: Partial<{
+      name: string;
+      email: string;
+      phone: string;
+      address: string;
+      photo: string;
+    }>,
   ) => Promise<void>;
   deleteBranchUser: (id: string) => Promise<void>;
 
@@ -67,12 +86,25 @@ interface AppState {
     rollNumber: string;
     class: string;
     gender: Student["gender"];
+    schoolName?: string;
+    phone?: string;
     photo?: string;
   }) => Promise<Student>;
   updateStudent: (
     id: string,
     data: Partial<
-      Pick<Student, "name" | "rollNumber" | "class" | "gender" | "active" | "branchId" | "photo">
+      Pick<
+        Student,
+        | "name"
+        | "rollNumber"
+        | "class"
+        | "gender"
+        | "schoolName"
+        | "phone"
+        | "active"
+        | "branchId"
+        | "photo"
+      >
     >,
   ) => Promise<Student>;
   deleteStudent: (id: string) => Promise<void>;
