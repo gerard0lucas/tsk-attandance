@@ -6,7 +6,6 @@ import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import type { UserRole } from "../types";
 import { APP_NAME } from "../lib/branding";
-import { HomeHeaderBanner } from "../components/HomeHeaderBanner";
 
 const dashboardPath: Record<UserRole, string> = {
   admin: "/admin",
@@ -51,9 +50,6 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-dvh w-full flex-col bg-page pt-safe pb-safe">
-      <div className="mx-auto w-full max-w-4xl px-4 pt-4">
-        <HomeHeaderBanner />
-      </div>
       <div className="flex flex-1 items-center justify-center px-4 py-8">
       <div className="mx-auto w-full max-w-sm">
         <div className="mb-6 text-center">
