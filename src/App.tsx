@@ -3,6 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardLayout } from "./components/layout/DashboardLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { HomePage } from "./pages/HomePage";
+import { DownloadQrPage } from "./pages/DownloadQrPage";
 import { AdminOverview } from "./pages/admin/AdminOverview";
 import { AdminBranches } from "./pages/admin/AdminBranches";
 import { AdminManagers } from "./pages/admin/AdminManagers";
@@ -108,7 +110,8 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<AdminOverview />} />
+          <Route index element={<HomePage role="admin" />} />
+          <Route path="dashboard" element={<AdminOverview />} />
           <Route path="branches" element={<AdminBranches />} />
           <Route path="managers" element={<AdminManagers />} />
           <Route path="users" element={<AdminUsers />} />
@@ -118,6 +121,7 @@ export default function App() {
           <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
           <Route path="reports" element={<ReportsRoute />} />
+          <Route path="download-qr" element={<DownloadQrPage role="admin" />} />
         </Route>
 
         <Route
@@ -128,7 +132,8 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<ManagerDashboard />} />
+          <Route index element={<HomePage role="manager" />} />
+          <Route path="dashboard" element={<ManagerDashboard />} />
           <Route path="scan" element={<ManagerScan />} />
           <Route path="students" element={<ManagerStudents />} />
           <Route path="students/:studentId" element={<StudentProfilePage />} />
@@ -136,6 +141,7 @@ export default function App() {
           <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
           <Route path="reports" element={<ReportsRoute />} />
+          <Route path="download-qr" element={<DownloadQrPage role="manager" />} />
         </Route>
 
         <Route
@@ -146,13 +152,15 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<UserDashboard />} />
+          <Route index element={<HomePage role="user" />} />
+          <Route path="dashboard" element={<UserDashboard />} />
           <Route path="scan" element={<ScanPage />} />
           <Route path="students" element={<UserStudents />} />
           <Route path="students/:studentId" element={<StudentProfilePage />} />
           <Route path="students/:studentId/qr" element={<StudentQrPage />} />
           <Route path="attendance" element={<AttendanceEditPage />} />
           <Route path="reports" element={<ReportsRoute />} />
+          <Route path="download-qr" element={<DownloadQrPage role="user" />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

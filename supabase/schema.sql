@@ -1,4 +1,4 @@
--- Harimandir Balopana Attendence — run in Supabase SQL Editor (Dashboard → SQL → New query)
+-- Harimandir Balopasana — run in Supabase SQL Editor (Dashboard → SQL → New query)
 
 -- Extensions
 create extension if not exists "pgcrypto";

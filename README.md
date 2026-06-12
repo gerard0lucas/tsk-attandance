@@ -1,4 +1,4 @@
-# Harimandir Balopana Attendence
+# Harimandir Balopasana
 
 Branch-based student attendance with QR scanning. React + Vite + Supabase.
 

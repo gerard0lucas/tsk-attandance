@@ -1,60 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import {
-  BarChart3,
-  Building2,
-  ClipboardList,
-  LayoutDashboard,
-  Menu,
-  MoreHorizontal,
-  ScanLine,
-  User,
-  UserCog,
-  Users,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+import { Menu, MoreHorizontal, User, X } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { APP_NAME } from "../../lib/branding";
+import { navItemsForRole, type NavItem } from "../../lib/navConfig";
 import { HomeHeaderBanner } from "../HomeHeaderBanner";
 import { SidebarBrand } from "./SidebarBrand";
 import { SidebarProfile } from "./SidebarProfile";
 import type { UserRole } from "../../types";
-
-type NavItem = {
-  to: string;
-  label: string;
-  end?: boolean;
-  icon: LucideIcon;
-};
-
-const adminNav: NavItem[] = [
-  { to: "/admin", label: "Dashboard", end: true, icon: LayoutDashboard },
-  { to: "/admin/branches", label: "Branches", icon: Building2 },
-  { to: "/admin/managers", label: "Managers", icon: UserCog },
-  { to: "/admin/users", label: "Users", icon: Users },
-  { to: "/admin/students", label: "Students", icon: Users },
-  { to: "/admin/scan", label: "Scan", icon: ScanLine },
-  { to: "/admin/attendance", label: "Attendance", icon: ClipboardList },
-  { to: "/admin/reports", label: "Reports", icon: BarChart3 },
-];
-
-const managerNav: NavItem[] = [
-  { to: "/manager", label: "Dashboard", end: true, icon: LayoutDashboard },
-  { to: "/manager/scan", label: "Scan", icon: ScanLine },
-  { to: "/manager/students", label: "Students", icon: Users },
-  { to: "/manager/users", label: "Users", icon: UserCog },
-  { to: "/manager/attendance", label: "Attendance", icon: ClipboardList },
-  { to: "/manager/reports", label: "Reports", icon: BarChart3 },
-];
-
-const userNav: NavItem[] = [
-  { to: "/user", label: "Dashboard", end: true, icon: LayoutDashboard },
-  { to: "/user/scan", label: "Scan", icon: ScanLine },
-  { to: "/user/students", label: "Students", icon: Users },
-  { to: "/user/attendance", label: "Attendance", icon: ClipboardList },
-  { to: "/user/reports", label: "Reports", icon: BarChart3 },
-];
 
 const MOBILE_PRIMARY_COUNT = 4;
 
@@ -100,8 +53,9 @@ export function DashboardLayout({ role }: { role: UserRole }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const nav =
-    role === "admin" ? adminNav : role === "manager" ? managerNav : userNav;
+  const nav = navItemsForRole(role);
+  const isHomeRoute =
+    location.pathname === `/${role}` || location.pathname === `/${role}/`;
   const roleLabel =
     role === "admin" ? "Admin" : role === "manager" ? "Manager" : "User";
 
@@ -242,7 +196,7 @@ export function DashboardLayout({ role }: { role: UserRole }) {
 
       <main className="flex-1 overflow-x-hidden bg-page px-3 py-3 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] pt-1 sm:px-4 sm:py-4 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] lg:ml-52 lg:min-h-dvh lg:p-6 lg:pb-6">
         <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 sm:space-y-4">
-          <HomeHeaderBanner />
+          {!isHomeRoute && <HomeHeaderBanner />}
           {dataLoading && (
             <p className="mb-3 rounded border border-morning bg-white px-3 py-2 text-sm text-mist sm:mb-4">
               Syncing data…
