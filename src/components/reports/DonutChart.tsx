@@ -83,12 +83,12 @@ export function DonutChart({
 
   return (
     <ReportChartFrame>
-      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-center">
+      <div className="flex h-full flex-col items-center justify-center gap-3">
         <svg
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           role="img"
           aria-labelledby={titleId}
-          className="h-[220px] w-[220px] shrink-0"
+          className="h-[180px] w-[180px] shrink-0 sm:h-[200px] sm:w-[200px]"
         >
           <title id={titleId}>Donut chart</title>
           {slices.map((slice) => (
@@ -106,11 +106,14 @@ export function DonutChart({
           ))}
         </svg>
 
-        <ul className="flex flex-wrap justify-center gap-x-4 gap-y-2 sm:flex-col sm:justify-start">
+        <ul className="flex w-full flex-wrap items-center justify-center gap-x-4 gap-y-1.5 px-1">
           {slices.map((slice) => (
-            <li key={slice.name} className="flex items-center gap-2 text-sm text-cerulean">
+            <li
+              key={slice.name}
+              className="flex items-center gap-2 whitespace-nowrap text-xs text-cerulean sm:text-sm"
+            >
               <span
-                className="h-3 w-3 shrink-0 rounded-full"
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
                 style={{ background: slice.fill ?? REPORT_CHART_COLORS.cerulean }}
                 aria-hidden
               />
