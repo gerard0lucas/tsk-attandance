@@ -1,12 +1,15 @@
 import { useRef, useState } from "react";
 import Swal from "sweetalert2";
 import { useStore } from "../store/useStore";
+import { toastError, toastSuccess, toastWarning } from "../lib/toast";
 import { QrScanner, type QrScannerHandle } from "../components/QrScanner";
 import { Card } from "../components/ui/Card";
-import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
-import { formatGender } from "../lib/student";
+import { formatGender, findStudentByRollNumber } from "../lib/student";
+import { validateManualLookup } from "../lib/validation";
+import { useFormValidation } from "../hooks/useFormValidation";
+import { RollNumberInput } from "../components/ui/RollNumberInput";
 import type { Student } from "../types";
 
 function studentAlertHtml(student: Student, branchName?: string, alreadyPresent?: boolean) {
@@ -46,6 +49,7 @@ export function ScanPage() {
   const scannerRef = useRef<QrScannerHandle>(null);
   const [manualId, setManualId] = useState("");
   const [cooldown, setCooldown] = useState(false);
+  const { errors, clearField, validate } = useFormValidation<"manualId">();
 
   const isBranchStaff = session?.role === "user" || session?.role === "manager";
   const branchStudents =
@@ -65,22 +69,12 @@ export function ScanPage() {
 
   const showStudentAlert = async (student: Student | undefined, invalidMessage?: string) => {
     if (!student) {
-      await Swal.fire({
-        icon: "error",
-        title: "Invalid QR",
-        text: invalidMessage ?? "Student not found or QR is invalid.",
-        confirmButtonColor: "#00303f",
-      });
+      toastError(invalidMessage ?? "Student not found or QR is invalid.", "Invalid QR");
       return;
     }
 
     if (!student.active) {
-      await Swal.fire({
-        icon: "warning",
-        title: "Inactive student",
-        text: `${student.name} is inactive and cannot be marked.`,
-        confirmButtonColor: "#00303f",
-      });
+      toastWarning(`${student.name} is inactive and cannot be marked.`, "Inactive student");
       return;
     }
 
@@ -109,24 +103,11 @@ export function ScanPage() {
     const res = await markAttendance(student.id, session.userId);
 
     if (res.ok) {
-      await Swal.fire({
-        icon: "success",
-        title: "Present!",
-        text: res.message,
-        confirmButtonColor: "#00303f",
-        timer: 2000,
-        showConfirmButton: false,
-      });
-      setManualId("");
+      toastSuccess(res.message, "Present!");
       setCooldown(true);
       window.setTimeout(() => setCooldown(false), 2000);
     } else {
-      await Swal.fire({
-        icon: "error",
-        title: "Could not mark",
-        text: res.message,
-        confirmButtonColor: "#00303f",
-      });
+      toastError(res.message, "Could not mark");
     }
   };
 
@@ -136,12 +117,18 @@ export function ScanPage() {
   };
 
   const handleManualLookup = () => {
+    if (!validate(() => {
+      const err = validateManualLookup(manualId);
+      return err ? { manualId: err } : {};
+    })) {
+      return;
+    }
     const q = manualId.trim();
-    if (!q) return;
-    const student = branchStudents.find(
-      (s) => s.id === q || s.rollNumber.toLowerCase() === q.toLowerCase(),
-    );
-    void showStudentAlert(student, "Student not found in your branch.");
+    setManualId("");
+    clearField("manualId");
+
+    const student = findStudentByRollNumber(branchStudents, q);
+    void showStudentAlert(student, "No student found with this roll number in your branch.");
   };
 
   return (
@@ -161,12 +148,7 @@ export function ScanPage() {
           paused={cooldown}
           onScan={({ sid, tok }) => handleScan(sid, tok)}
           onInvalidScan={() =>
-            void Swal.fire({
-              icon: "error",
-              title: "Invalid QR",
-              text: "Not a valid student QR from this app.",
-              confirmButtonColor: "#00303f",
-            })
+            toastError("Not a valid student QR from this app.", "Invalid QR")
           }
         />
       </Card>
@@ -174,10 +156,15 @@ export function ScanPage() {
       <Card>
         <p className="mb-3 text-sm font-medium text-cerulean">Manual entry</p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Input
-            placeholder="Roll number or ID"
+          <RollNumberInput
+            label=""
+            placeholder="Roll number"
             value={manualId}
-            onChange={(e) => setManualId(e.target.value)}
+            onChange={(value) => {
+              setManualId(value);
+              clearField("manualId");
+            }}
+            error={errors.manualId}
             wrapperClassName="min-w-0 flex-1"
           />
           <Button

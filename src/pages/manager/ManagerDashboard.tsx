@@ -5,6 +5,7 @@ import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { todayKey, formatTime } from "../../lib/dates";
+import { sortStudentsByRollNumber } from "../../lib/student";
 
 export function ManagerDashboard() {
   const session = useStore((s) => s.session);
@@ -15,8 +16,8 @@ export function ManagerDashboard() {
 
   const branchId = session?.branchId;
   const today = todayKey();
-  const activeStudents = students.filter(
-    (s) => s.active && (!branchId || s.branchId === branchId),
+  const activeStudents = sortStudentsByRollNumber(
+    students.filter((s) => s.active && (!branchId || s.branchId === branchId)),
   );
   const todayAttendance = attendance.filter(
     (a) => a.date === today && (!branchId || a.branchId === branchId),

@@ -1,4 +1,5 @@
-import type { Gender, Student } from "../types";
+import type { Gender, Medium, Student } from "../types";
+import { sanitizeRollNumber } from "./validation";
 import { buildQrPayload, parseQrPayload } from "./qr";
 
 export const GENDER_OPTIONS: { value: Gender; label: string }[] = [
@@ -7,8 +8,42 @@ export const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+export const CLASS_OPTIONS = Array.from({ length: 12 }, (_, i) => {
+  const value = String(i + 1);
+  return { value, label: `Class ${value}` };
+});
+
+export const MEDIUM_OPTIONS: { value: Medium; label: string }[] = [
+  { value: "english", label: "English" },
+  { value: "kannada", label: "Kannada" },
+  { value: "marathi", label: "Marathi" },
+];
+
+export function parseMedium(value: string | undefined): Medium {
+  if (value === "english" || value === "kannada" || value === "marathi") return value;
+  return "english";
+}
+
+export function formatMedium(medium: Medium): string {
+  return MEDIUM_OPTIONS.find((m) => m.value === medium)?.label ?? medium;
+}
+
+/** Map stored class to 1–12 when possible (handles legacy values like "10-A"). */
+export function parseStudentClass(value: string): string {
+  const trimmed = value.trim();
+  if (/^(?:[1-9]|1[0-2])$/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/^(?:[1-9]|1[0-2])(?!\d)/);
+  return match?.[0] ?? "";
+}
+
 export function formatGender(gender: Gender): string {
   return GENDER_OPTIONS.find((g) => g.value === gender)?.label ?? gender;
+}
+
+export function normalizeStudentName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed === "—") return trimmed || "—";
+  return trimmed.toUpperCase();
 }
 
 export function studentInitials(name: string): string {
@@ -18,23 +53,48 @@ export function studentInitials(name: string): string {
   return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
 }
 
+/** Numeric-aware roll number comparison (2 before 10). */
+export function compareRollNumber(a: string, b: string): number {
+  const aTrim = a.trim();
+  const bTrim = b.trim();
+  const aNum = /^\d+$/.test(aTrim) ? Number(aTrim) : NaN;
+  const bNum = /^\d+$/.test(bTrim) ? Number(bTrim) : NaN;
+  if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) return aNum - bNum;
+  return aTrim.localeCompare(bTrim, undefined, { numeric: true, sensitivity: "base" });
+}
+
+export function sortStudentsByRollNumber(students: Student[]): Student[] {
+  return [...students].sort((a, b) => compareRollNumber(a.rollNumber, b.rollNumber));
+}
+
+export function findStudentByRollNumber(
+  students: Student[],
+  rollNumber: string,
+): Student | undefined {
+  const target = sanitizeRollNumber(rollNumber);
+  if (!target) return undefined;
+  return students.find((s) => sanitizeRollNumber(s.rollNumber) === target);
+}
+
 export function filterStudents(students: Student[], query: string): Student[] {
+  const sorted = sortStudentsByRollNumber(students);
   const q = query.trim();
-  if (!q) return students;
+  if (!q) return sorted;
 
   const parsed = parseQrPayload(q);
   if (parsed) {
-    return students.filter((s) => s.id === parsed.sid && s.qrToken === parsed.tok);
+    return sorted.filter((s) => s.id === parsed.sid && s.qrToken === parsed.tok);
   }
 
   const lower = q.toLowerCase();
-  return students.filter((s) => {
+  return sorted.filter((s) => {
     const qrText = buildQrPayload(s).toLowerCase();
     return (
       s.name.toLowerCase().includes(lower) ||
       s.rollNumber.toLowerCase().includes(lower) ||
       s.phone.toLowerCase().includes(lower) ||
       s.schoolName.toLowerCase().includes(lower) ||
+      formatMedium(s.medium).toLowerCase().includes(lower) ||
       s.qrToken.toLowerCase().includes(lower) ||
       s.id.toLowerCase().includes(lower) ||
       qrText.includes(lower)
@@ -52,10 +112,11 @@ export function normalizeStudentFields(student: Partial<Student> & { id: string 
   return {
     id: raw.id,
     branchId: raw.branchId ?? raw.templeId ?? "",
-    name: raw.name?.trim() || "—",
-    rollNumber: raw.rollNumber?.trim() || "—",
+    name: normalizeStudentName(raw.name?.trim() || "—"),
+    rollNumber: sanitizeRollNumber(raw.rollNumber?.trim() || "") || "—",
     class: raw.class?.trim() || "—",
     gender,
+    medium: parseMedium(raw.medium),
     schoolName: raw.schoolName?.trim() || "",
     phone: raw.phone?.trim() || "",
     photo: raw.photo || undefined,

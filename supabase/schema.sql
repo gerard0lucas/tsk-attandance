@@ -40,6 +40,7 @@ create table if not exists public.students (
   roll_number text not null,
   class text not null,
   gender text not null check (gender in ('male', 'female', 'other')),
+  medium text not null default 'english' check (medium in ('english', 'kannada', 'marathi')),
   school_name text not null default '',
   phone text not null default '',
   photo_url text,
@@ -49,6 +50,7 @@ create table if not exists public.students (
 );
 
 create index if not exists students_branch_id_idx on public.students (branch_id);
+create unique index if not exists students_roll_number_unique_idx on public.students (roll_number);
 create index if not exists students_qr_token_idx on public.students (qr_token);
 
 -- Attendance (one check-in per student per calendar day)

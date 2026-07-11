@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
+import { toastError, toastSuccess } from "../lib/toast";
 import { Eye } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { Badge } from "../components/ui/Badge";
@@ -19,6 +20,7 @@ import {
 } from "../components/ui/TableWrap";
 import { formatTime, todayKey } from "../lib/dates";
 import { formatReportDate } from "../lib/attendanceReport";
+import { compareRollNumber } from "../lib/student";
 import type { AttendanceRecord, Student, UserRole } from "../types";
 
 function studentProfilePath(role: UserRole | undefined, studentId: string): string {
@@ -72,7 +74,7 @@ export function AttendanceEditPage() {
         const record = records.get(student.id);
         return { student, record, present: Boolean(record) };
       })
-      .sort((a, b) => a.student.name.localeCompare(b.student.name));
+      .sort((a, b) => compareRollNumber(a.student.rollNumber, b.student.rollNumber));
   }, [branchStudents, records]);
 
   const presentCount = studentRows.filter((row) => row.present).length;
@@ -85,14 +87,11 @@ export function AttendanceEditPage() {
   const markPresent = async (student: Student) => {
     if (!session) return;
     const res = await markAttendanceForDate(student.id, filterDate, session.userId);
-    await Swal.fire({
-      icon: res.ok ? "success" : "error",
-      title: res.ok ? "Marked present" : "Could not mark",
-      text: res.ok ? `${student.name} · ${formatReportDate(filterDate)}` : res.message,
-      confirmButtonColor: "#00303f",
-      timer: res.ok ? 1500 : undefined,
-      showConfirmButton: !res.ok,
-    });
+    if (res.ok) {
+      toastSuccess(`${student.name} · ${formatReportDate(filterDate)}`, "Marked present");
+    } else {
+      toastError(res.message, "Could not mark");
+    }
   };
 
   const markAbsent = async (record: AttendanceRecord, studentName: string) => {
@@ -108,19 +107,9 @@ export function AttendanceEditPage() {
     if (!result.isConfirmed) return;
     try {
       await deleteAttendance(record.id);
-      await Swal.fire({
-        icon: "success",
-        title: "Marked absent",
-        timer: 1500,
-        showConfirmButton: false,
-      });
+      toastSuccess("Attendance updated.", "Marked absent");
     } catch {
-      await Swal.fire({
-        icon: "error",
-        title: "Could not remove",
-        text: "You can only change attendance for students in your branch.",
-        confirmButtonColor: "#00303f",
-      });
+      toastError("You can only change attendance for students in your branch.", "Could not remove");
     }
   };
 

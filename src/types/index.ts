@@ -2,6 +2,8 @@ export type UserRole = "admin" | "manager" | "user";
 
 export type Gender = "male" | "female" | "other";
 
+export type Medium = "english" | "kannada" | "marathi";
+
 export interface Branch {
   id: string;
   name: string;
@@ -50,6 +52,7 @@ export interface Student {
   rollNumber: string;
   class: string;
   gender: Gender;
+  medium: Medium;
   schoolName: string;
   phone: string;
   photo?: string;

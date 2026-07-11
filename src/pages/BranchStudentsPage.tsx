@@ -4,6 +4,7 @@ import { useStore } from "../store/useStore";
 import { Button } from "../components/ui/Button";
 import { CardRow } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import { RollNumberInput } from "../components/ui/RollNumberInput";
 import { StudentSearchField } from "../components/StudentSearchField";
 import { Select } from "../components/ui/Select";
 import { Modal } from "../components/ui/Modal";
@@ -13,8 +14,10 @@ import { FormActions, FormStack } from "../components/ui/FormStack";
 import { PhotoUpload } from "../components/PhotoUpload";
 import { StudentPhoto } from "../components/StudentPhoto";
 import { StudentActionIcons } from "../components/StudentActionIcons";
-import { filterStudents, formatGender, GENDER_OPTIONS } from "../lib/student";
-import type { Gender, Student } from "../types";
+import { filterStudents, formatGender, formatMedium, GENDER_OPTIONS, CLASS_OPTIONS, MEDIUM_OPTIONS, normalizeStudentName, parseStudentClass, sortStudentsByRollNumber } from "../lib/student";
+import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
+import { useFormValidation } from "../hooks/useFormValidation";
+import type { Gender, Medium, Student } from "../types";
 
 type BranchStudentsBasePath = "/manager" | "/user";
 
@@ -36,12 +39,17 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("male");
+  const [medium, setMedium] = useState<Medium>("english");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "name" | "rollNumber" | "studentClass" | "medium" | "phone"
+  >();
 
   const branchList = useMemo(
-    () => (branchId ? students.filter((s) => s.branchId === branchId) : []),
+    () =>
+      sortStudentsByRollNumber(branchId ? students.filter((s) => s.branchId === branchId) : []),
     [students, branchId],
   );
 
@@ -65,10 +73,12 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     setRollNumber("");
     setStudentClass("");
     setGender("male");
+    setMedium("english");
     setSchoolName("");
     setPhone("");
     setPhoto(undefined);
     setEditing(null);
+    clearAll();
   };
 
   const closeForm = () => {
@@ -84,25 +94,37 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   const openEdit = (s: Student) => {
     setEditing(s);
     setName(s.name);
-    setRollNumber(s.rollNumber);
-    setStudentClass(s.class);
+    setRollNumber(sanitizeRollNumber(s.rollNumber));
+    setStudentClass(parseStudentClass(s.class));
     setGender(s.gender);
+    setMedium(s.medium);
     setSchoolName(s.schoolName);
     setPhone(s.phone);
     setPhoto(s.photo);
+    clearAll();
     setFormOpen(true);
   };
 
   const save = async () => {
-    if (!name.trim() || !rollNumber.trim() || !studentClass.trim() || !branchId) return;
+    if (
+      !validate(() =>
+        validateStudentFields(
+          { name, rollNumber, studentClass, medium, phone, branchId },
+          { students, excludeStudentId: editing?.id },
+        ),
+      )
+    ) {
+      return;
+    }
     try {
       if (editing) {
         await updateStudent(editing.id, {
           branchId,
-          name: name.trim(),
-          rollNumber: rollNumber.trim(),
+          name: normalizeStudentName(name),
+          rollNumber: sanitizeRollNumber(rollNumber),
           class: studentClass.trim(),
           gender,
+          medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           photo: photo || undefined,
@@ -111,10 +133,11 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
       } else {
         const student = await addStudent({
           branchId,
-          name: name.trim(),
-          rollNumber: rollNumber.trim(),
+          name: normalizeStudentName(name),
+          rollNumber: sanitizeRollNumber(rollNumber),
           class: studentClass.trim(),
           gender,
+          medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           photo,
@@ -169,6 +192,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
                 <p className="text-sm text-mist">
                   Roll: {s.rollNumber} · Class: {s.class}
                 </p>
+                <p className="text-sm text-mist">Medium: {formatMedium(s.medium)}</p>
                 {s.schoolName && (
                   <p className="text-sm text-mist">School: {s.schoolName}</p>
                 )}
@@ -203,7 +227,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
             <Button variant="outline" onClick={closeForm}>
               Cancel
             </Button>
-            <Button onClick={() => void save()} disabled={!branchId}>
+            <Button onClick={() => void save()}>
               {editing ? "Save changes" : "Create & show QR"}
             </Button>
           </FormActions>
@@ -211,22 +235,47 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
       >
         <FormStack>
           <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input
-            label="Roll number"
-            type="number"
-            inputMode="numeric"
-            value={rollNumber}
-            onChange={(e) => setRollNumber(e.target.value)}
-            placeholder="e.g. NV-003"
+            label="Name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value.toUpperCase());
+              clearField("name");
+            }}
+            error={errors.name}
             required
           />
-          <Input
+          <RollNumberInput
+            value={rollNumber}
+            onChange={(value) => {
+              setRollNumber(value);
+              clearField("rollNumber");
+            }}
+            error={errors.rollNumber}
+            required
+          />
+          <Select
             label="Class"
             value={studentClass}
-            onChange={(e) => setStudentClass(e.target.value)}
-            placeholder="e.g. 10-A"
-            required
+            onChange={(e) => {
+              setStudentClass(e.target.value);
+              clearField("studentClass");
+            }}
+            error={errors.studentClass}
+            options={[
+              { value: "", label: "Select class" },
+              ...CLASS_OPTIONS,
+            ]}
+          />
+          <Select
+            label="Medium"
+            value={medium}
+            onChange={(e) => {
+              setMedium(e.target.value as Medium);
+              clearField("medium");
+            }}
+            error={errors.medium}
+            options={MEDIUM_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
           />
           <Input
             label="School name"
@@ -237,7 +286,11 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
             label="Phone number"
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              clearField("phone");
+            }}
+            error={errors.phone}
           />
           <Select
             label="Gender"

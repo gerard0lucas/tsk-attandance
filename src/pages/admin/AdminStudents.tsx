@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { Card, CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
+import { RollNumberInput } from "../../components/ui/RollNumberInput";
 import { StudentSearchField } from "../../components/StudentSearchField";
 import { Select } from "../../components/ui/Select";
 import { Badge } from "../../components/ui/Badge";
@@ -20,8 +21,10 @@ import {
 import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
 import { StudentActionIcons } from "../../components/StudentActionIcons";
-import { filterStudents, formatGender, GENDER_OPTIONS } from "../../lib/student";
-import type { Gender, Student } from "../../types";
+import { filterStudents, formatGender, formatMedium, GENDER_OPTIONS, CLASS_OPTIONS, MEDIUM_OPTIONS, normalizeStudentName, parseStudentClass, sortStudentsByRollNumber } from "../../lib/student";
+import { validateStudentFields, sanitizeRollNumber } from "../../lib/validation";
+import { useFormValidation } from "../../hooks/useFormValidation";
+import type { Gender, Medium, Student } from "../../types";
 
 export function AdminStudents() {
   const navigate = useNavigate();
@@ -40,14 +43,20 @@ export function AdminStudents() {
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("male");
+  const [medium, setMedium] = useState<Medium>("english");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [photo, setPhoto] = useState<string | undefined>();
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "name" | "rollNumber" | "studentClass" | "medium" | "phone" | "branchId"
+  >();
 
   const branchFiltered = useMemo(
     () =>
-      filterBranch === "all" ? students : students.filter((s) => s.branchId === filterBranch),
+      sortStudentsByRollNumber(
+        filterBranch === "all" ? students : students.filter((s) => s.branchId === filterBranch),
+      ),
     [students, filterBranch],
   );
 
@@ -65,11 +74,13 @@ export function AdminStudents() {
     setRollNumber("");
     setStudentClass("");
     setGender("male");
+    setMedium("english");
     setSchoolName("");
     setPhone("");
     setBranchId(branches[0]?.id ?? "");
     setPhoto(undefined);
     setEditing(null);
+    clearAll();
   };
 
   const closeForm = () => {
@@ -85,26 +96,38 @@ export function AdminStudents() {
   const openEdit = (s: Student) => {
     setEditing(s);
     setName(s.name);
-    setRollNumber(s.rollNumber);
-    setStudentClass(s.class);
+    setRollNumber(sanitizeRollNumber(s.rollNumber));
+    setStudentClass(parseStudentClass(s.class));
     setGender(s.gender);
+    setMedium(s.medium);
     setSchoolName(s.schoolName);
     setPhone(s.phone);
     setBranchId(s.branchId);
     setPhoto(s.photo);
+    clearAll();
     setFormOpen(true);
   };
 
   const save = async () => {
-    if (!name.trim() || !rollNumber.trim() || !studentClass.trim() || !branchId) return;
+    if (
+      !validate(() =>
+        validateStudentFields(
+          { name, rollNumber, studentClass, medium, phone, branchId },
+          { students, excludeStudentId: editing?.id },
+        ),
+      )
+    ) {
+      return;
+    }
     try {
       if (editing) {
         await updateStudent(editing.id, {
           branchId,
-          name: name.trim(),
-          rollNumber: rollNumber.trim(),
+          name: normalizeStudentName(name),
+          rollNumber: sanitizeRollNumber(rollNumber),
           class: studentClass.trim(),
           gender,
+          medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           photo: photo || undefined,
@@ -113,10 +136,11 @@ export function AdminStudents() {
       } else {
         const student = await addStudent({
           branchId,
-          name: name.trim(),
-          rollNumber: rollNumber.trim(),
+          name: normalizeStudentName(name),
+          rollNumber: sanitizeRollNumber(rollNumber),
           class: studentClass.trim(),
           gender,
+          medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           photo,
@@ -194,6 +218,7 @@ export function AdminStudents() {
                 <th className={tableHeadCell}>Name</th>
                 <th className={tableHeadCell}>Roll</th>
                 <th className={tableHeadCell}>Class</th>
+                <th className={tableHeadCell}>Medium</th>
                 <th className={tableHeadCell}>School</th>
                 <th className={tableHeadCell}>Phone</th>
                 <th className={tableHeadCell}>Gender</th>
@@ -234,7 +259,7 @@ export function AdminStudents() {
             <Button variant="outline" onClick={closeForm}>
               Cancel
             </Button>
-            <Button onClick={() => void save()} disabled={!branchId}>
+            <Button onClick={() => void save()}>
               {editing ? "Save changes" : "Create & show QR"}
             </Button>
           </FormActions>
@@ -242,22 +267,47 @@ export function AdminStudents() {
       >
         <FormStack>
           <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input
-            label="Roll number"
-            type="number"
-            inputMode="numeric"
-            value={rollNumber}
-            onChange={(e) => setRollNumber(e.target.value)}
-            placeholder="e.g. NV-003"
+            label="Name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value.toUpperCase());
+              clearField("name");
+            }}
+            error={errors.name}
             required
           />
-          <Input
+          <RollNumberInput
+            value={rollNumber}
+            onChange={(value) => {
+              setRollNumber(value);
+              clearField("rollNumber");
+            }}
+            error={errors.rollNumber}
+            required
+          />
+          <Select
             label="Class"
             value={studentClass}
-            onChange={(e) => setStudentClass(e.target.value)}
-            placeholder="e.g. 10-A"
-            required
+            onChange={(e) => {
+              setStudentClass(e.target.value);
+              clearField("studentClass");
+            }}
+            error={errors.studentClass}
+            options={[
+              { value: "", label: "Select class" },
+              ...CLASS_OPTIONS,
+            ]}
+          />
+          <Select
+            label="Medium"
+            value={medium}
+            onChange={(e) => {
+              setMedium(e.target.value as Medium);
+              clearField("medium");
+            }}
+            error={errors.medium}
+            options={MEDIUM_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
           />
           <Input
             label="School name"
@@ -268,7 +318,11 @@ export function AdminStudents() {
             label="Phone number"
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              clearField("phone");
+            }}
+            error={errors.phone}
           />
           <Select
             label="Gender"
@@ -279,7 +333,11 @@ export function AdminStudents() {
           <Select
             label="Branch"
             value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
+            onChange={(e) => {
+              setBranchId(e.target.value);
+              clearField("branchId");
+            }}
+            error={errors.branchId}
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
           />
         </FormStack>
@@ -320,6 +378,7 @@ function StudentCard({
         <div className="min-w-0">
           <p className="font-medium text-cerulean">{student.name}</p>
           <p className="text-sm text-mist">Roll: {student.rollNumber} · Class: {student.class}</p>
+          <p className="text-sm text-mist">Medium: {formatMedium(student.medium)}</p>
           {student.schoolName && (
             <p className="text-sm text-mist">School: {student.schoolName}</p>
           )}
@@ -358,6 +417,7 @@ function StudentRow({
       <td className={tableCell}>{student.name}</td>
       <td className={tableCellMuted}>{student.rollNumber}</td>
       <td className={tableCell}>{student.class}</td>
+      <td className={tableCellMuted}>{formatMedium(student.medium)}</td>
       <td className={tableCellMuted}>{student.schoolName || "—"}</td>
       <td className={tableCellMuted}>{student.phone || "—"}</td>
       <td className={tableCell}>{formatGender(student.gender)}</td>

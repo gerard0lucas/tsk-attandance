@@ -1,5 +1,5 @@
 import { lazy, Suspense, useRef, useState } from "react";
-import Swal from "sweetalert2";
+import { toastError } from "../lib/toast";
 import { ScanLine } from "lucide-react";
 import type { QrScannerHandle } from "./QrScanner";
 import { Input } from "./ui/Input";
@@ -40,12 +40,7 @@ export function StudentSearchField({
   const handleScan = async ({ sid, tok }: { sid: string; tok: string }) => {
     const student = students.find((s) => s.id === sid && s.qrToken === tok);
     if (!student) {
-      await Swal.fire({
-        icon: "error",
-        title: "Student not found",
-        text: "This QR is not linked to a student in the current list.",
-        confirmButtonColor: "#00303f",
-      });
+      toastError("This QR is not linked to a student in the current list.", "Student not found");
       return;
     }
 
@@ -94,12 +89,7 @@ export function StudentSearchField({
             ref={scannerRef}
             onScan={(payload) => void handleScan(payload)}
             onInvalidScan={() =>
-              void Swal.fire({
-                icon: "error",
-                title: "Invalid QR",
-                text: "Not a valid student QR from this app.",
-                confirmButtonColor: "#00303f",
-              })
+              toastError("Not a valid student QR from this app.", "Invalid QR")
             }
           />
         </Suspense>

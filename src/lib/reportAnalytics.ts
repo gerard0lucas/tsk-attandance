@@ -1,4 +1,4 @@
-import { eachDayOfInterval, format } from "date-fns";
+import { format } from "date-fns";
 import type { AttendanceRecord, Branch, Student } from "../types";
 import { parseDateKey } from "./reportRanges";
 
@@ -158,23 +158,38 @@ export function dailyAttendanceTrend(
   to: string,
   activeStudents: Student[],
 ): DailyTrendPoint[] {
-  const days = eachDayOfInterval({
-    start: parseDateKey(from),
-    end: parseDateKey(to),
-  });
   const activeCount = activeStudents.length;
+  const fromDate = parseDateKey(from);
+  const toDate = parseDateKey(to);
 
-  return days.map((day) => {
-    const key = format(day, "yyyy-MM-dd");
-    const dayRecords = records.filter((r) => r.date === key);
-    const present = new Set(dayRecords.map((r) => r.studentId)).size;
-    return {
-      date: key,
-      label: format(day, "MMM d"),
-      present,
-      absent: Math.max(activeCount - present, 0),
-    };
-  });
+  const byDate = new Map<string, AttendanceRecord[]>();
+  for (const record of records) {
+    const day = parseDateKey(record.date);
+    if (day < fromDate || day > toDate) continue;
+    const list = byDate.get(record.date) ?? [];
+    list.push(record);
+    byDate.set(record.date, list);
+  }
+
+  return [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, dayRecords]) => {
+      const present = new Set(dayRecords.map((r) => r.studentId)).size;
+      return {
+        date: key,
+        label: format(parseDateKey(key), "MMM d"),
+        present,
+        absent: Math.max(activeCount - present, 0),
+      };
+    })
+    .filter((point) => point.present > 0);
+}
+
+export function formatAttendanceTrendSubtitle(points: DailyTrendPoint[]): string {
+  if (points.length === 0) return "No attendance sessions in this period";
+  if (points.length === 1) return points[0]!.label;
+  if (points.length <= 4) return points.map((p) => p.label).join(" · ");
+  return `${points.length} sessions · ${points[0]!.label} – ${points[points.length - 1]!.label}`;
 }
 
 export function branchPresentAbsentTrend(

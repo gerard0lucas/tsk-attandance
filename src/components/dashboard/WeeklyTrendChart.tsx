@@ -8,7 +8,9 @@ export function WeeklyTrendChart({
   data: DailyTrendPoint[];
   emptyLabel: string;
 }) {
-  if (data.length === 0) {
+  const points = data.filter((point) => point.present > 0);
+
+  if (points.length === 0) {
     return <p className="text-sm text-mist">{emptyLabel}</p>;
   }
 
@@ -17,14 +19,14 @@ export function WeeklyTrendChart({
   const pad = { top: 16, right: 12, bottom: 28, left: 12 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
-  const peak = Math.max(...data.map((d) => Math.max(d.present, d.absent)), 1);
-  const step = data.length > 1 ? chartW / (data.length - 1) : chartW;
+  const peak = Math.max(...points.map((d) => d.present), 1);
+  const step = points.length > 1 ? chartW / (points.length - 1) : chartW;
 
-  const barWidth = Math.min(28, Math.max(8, chartW / data.length - 6));
+  const barWidth = Math.min(28, Math.max(8, chartW / points.length - 6));
 
-  const linePoints = data
+  const linePoints = points
     .map((point, index) => {
-      const x = pad.left + (data.length > 1 ? index * step : chartW / 2);
+      const x = pad.left + (points.length > 1 ? index * step : chartW / 2);
       const y = pad.top + chartH - (point.present / peak) * chartH;
       return `${x},${y}`;
     })
@@ -33,8 +35,8 @@ export function WeeklyTrendChart({
   return (
     <div>
       <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" aria-hidden>
-        {data.map((point, index) => {
-          const xCenter = pad.left + (data.length > 1 ? index * step : chartW / 2);
+        {points.map((point, index) => {
+          const xCenter = pad.left + (points.length > 1 ? index * step : chartW / 2);
           const barH = (point.present / peak) * chartH;
           return (
             <rect
@@ -55,8 +57,8 @@ export function WeeklyTrendChart({
           strokeWidth={2.5}
           points={linePoints}
         />
-        {data.map((point, index) => {
-          const x = pad.left + (data.length > 1 ? index * step : chartW / 2);
+        {points.map((point, index) => {
+          const x = pad.left + (points.length > 1 ? index * step : chartW / 2);
           return (
             <text
               key={`${point.date}-label`}

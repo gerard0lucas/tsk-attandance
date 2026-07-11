@@ -1,4 +1,6 @@
 import type { AttendanceRecord, Branch, BranchUser, Manager, Student } from "../../types";
+import { normalizeStudentName, parseMedium } from "../student";
+import { sanitizeRollNumber } from "../validation";
 
 export type ProfileRow = {
   id: string;
@@ -35,6 +37,7 @@ export type StudentRow = {
   roll_number: string;
   class: string;
   gender: Student["gender"];
+  medium?: string;
   school_name?: string;
   phone?: string;
   photo_url: string | null;
@@ -125,10 +128,11 @@ export function toStudent(row: StudentRow): Student {
   return {
     id: row.id,
     branchId: row.branch_id,
-    name: row.name,
-    rollNumber: row.roll_number,
+    name: normalizeStudentName(row.name),
+    rollNumber: sanitizeRollNumber(row.roll_number) || row.roll_number,
     class: row.class,
     gender: row.gender,
+    medium: parseMedium(row.medium),
     schoolName: row.school_name ?? "",
     phone: row.phone ?? "",
     photo: row.photo_url ?? undefined,

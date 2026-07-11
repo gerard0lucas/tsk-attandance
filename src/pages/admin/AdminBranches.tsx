@@ -7,6 +7,8 @@ import {
   emptyBranchInput,
   type BranchInput,
 } from "../../lib/branch";
+import { validateBranchFields } from "../../lib/validation";
+import { useFormValidation } from "../../hooks/useFormValidation";
 import { BranchCard } from "../../components/BranchCard";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -94,25 +96,34 @@ export function AdminBranches() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
   const [form, setForm] = useState<BranchInput>(emptyBranchInput());
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "name" | "contact1Phone" | "contact2Phone" | "mapLocation"
+  >();
 
   const setField = <K extends keyof BranchInput>(key: K, value: BranchInput[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === "name") clearField("name");
+    if (key === "contact1Phone") clearField("contact1Phone");
+    if (key === "contact2Phone") clearField("contact2Phone");
+    if (key === "mapLocation") clearField("mapLocation");
   };
 
   const reset = () => {
     setForm(emptyBranchInput());
     setEditing(null);
+    clearAll();
   };
 
   const openEdit = (branch: Branch) => {
     setEditing(branch);
     setForm(branchFromRecord(branch));
+    clearAll();
     setOpen(true);
   };
 
   const save = async () => {
     const data = trimBranchInput(form);
-    if (!data.name) return;
+    if (!validate(() => validateBranchFields(data))) return;
     try {
       if (editing) {
         await updateBranch(editing.id, data);
@@ -189,7 +200,7 @@ export function AdminBranches() {
             <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>
               Cancel
             </Button>
-            <Button onClick={() => void save()} disabled={!form.name.trim()}>
+            <Button onClick={() => void save()}>
               {editing ? "Save" : "Create"}
             </Button>
           </FormActions>
@@ -201,6 +212,7 @@ export function AdminBranches() {
             label="Name"
             value={form.name}
             onChange={(e) => setField("name", e.target.value)}
+            error={errors.name}
             required
           />
           <Input
@@ -231,6 +243,7 @@ export function AdminBranches() {
             label="Map location"
             value={form.mapLocation}
             onChange={(e) => setField("mapLocation", e.target.value)}
+            error={errors.mapLocation}
             placeholder="Google Maps link or coordinates"
           />
 
@@ -245,6 +258,7 @@ export function AdminBranches() {
             type="tel"
             value={form.contact1Phone}
             onChange={(e) => setField("contact1Phone", e.target.value)}
+            error={errors.contact1Phone}
           />
 
           <SectionTitle>Point of contact 2</SectionTitle>
@@ -258,6 +272,7 @@ export function AdminBranches() {
             type="tel"
             value={form.contact2Phone}
             onChange={(e) => setField("contact2Phone", e.target.value)}
+            error={errors.contact2Phone}
           />
         </FormStack>
       </Modal>

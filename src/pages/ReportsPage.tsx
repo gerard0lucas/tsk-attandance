@@ -18,6 +18,7 @@ import {
   branchPresentAbsentTrend,
   classAttendanceSlices,
   dailyAttendanceTrend,
+  formatAttendanceTrendSubtitle,
   enrollmentClassSlices,
   enrollmentGenderSlices,
   genderAttendanceSlices,
@@ -142,6 +143,11 @@ export function ReportsPage() {
     [periodRecords, from, to, activeInScope],
   );
 
+  const trendSubtitle = useMemo(
+    () => formatAttendanceTrendSubtitle(dailyTrend),
+    [dailyTrend],
+  );
+
   const branchTrend = useMemo(
     () => branchPresentAbsentTrend(periodRecords, branches, students, branchFilter),
     [periodRecords, branches, students, branchFilter],
@@ -245,7 +251,7 @@ export function ReportsPage() {
 
         <ReportChartCard
           title="Attendance over time"
-          subtitle="Daily present and absent counts"
+          subtitle={trendSubtitle}
         >
           <DailyBarChart
             data={dailyTrend}

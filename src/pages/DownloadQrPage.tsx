@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
-import Swal from "sweetalert2";
+import { toastError, toastSuccess } from "../lib/toast";
 import { useStore } from "../store/useStore";
 import { downloadStudentQrPng, downloadStudentsQrZip } from "../lib/qrExport";
-import { filterStudents } from "../lib/student";
+import { filterStudents, sortStudentsByRollNumber } from "../lib/student";
+import { validateQrDownload } from "../lib/validation";
+import { useFormValidation } from "../hooks/useFormValidation";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -38,13 +40,16 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
   );
   const [classFilter, setClassFilter] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "student" | "branch" | "class"
+  >();
 
   const scopedStudents = useMemo(() => {
     let list = students.filter((s) => s.active);
     if (scopedBranchId) {
       list = list.filter((s) => s.branchId === scopedBranchId);
     }
-    return list.sort((a, b) => a.name.localeCompare(b.name));
+    return sortStudentsByRollNumber(list);
   }, [students, scopedBranchId]);
 
   const classOptions = useMemo(() => {
@@ -98,6 +103,17 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
       : `Download ${targetStudents.length} QR${targetStudents.length === 1 ? "" : "s"} (ZIP)`;
 
   const handleDownload = async () => {
+    if (
+      !validate(() =>
+        validateQrDownload(mode, {
+          selectedStudentId,
+          branchFilter,
+          classFilter,
+        }),
+      )
+    ) {
+      return;
+    }
     if (targetStudents.length === 0) return;
 
     setDownloading(true);
@@ -120,23 +136,14 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
         );
       }
 
-      await Swal.fire({
-        icon: "success",
-        title: "Download started",
-        text:
-          mode === "individual"
-            ? `${targetStudents[0]?.name} QR saved.`
-            : `${targetStudents.length} QR codes saved in ZIP.`,
-        timer: 2000,
-        showConfirmButton: false,
-      });
+      toastSuccess(
+        mode === "individual"
+          ? `${targetStudents[0]?.name} QR saved.`
+          : `${targetStudents.length} QR codes saved in ZIP.`,
+        "Download started",
+      );
     } catch {
-      await Swal.fire({
-        icon: "error",
-        title: "Download failed",
-        text: "Could not create QR files. Try again.",
-        confirmButtonColor: "#00303f",
-      });
+      toastError("Could not create QR files. Try again.", "Download failed");
     } finally {
       setDownloading(false);
     }
@@ -164,7 +171,10 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
             <button
               key={value}
               type="button"
-              onClick={() => setMode(value)}
+              onClick={() => {
+                setMode(value);
+                clearAll();
+              }}
               className={`rounded-xl border px-3 py-3 text-left transition-colors ${
                 mode === value
                   ? "border-cerulean bg-cerulean text-white"
@@ -194,6 +204,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
                 onChange={(e) => {
                   setBranchFilter(e.target.value);
                   setSelectedStudentId("");
+                  clearField("branch");
                 }}
                 options={[
                   { value: "all", label: "All branches" },
@@ -210,7 +221,11 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
             <Select
               label="Student"
               value={selectedStudentId}
-              onChange={(e) => setSelectedStudentId(e.target.value)}
+              onChange={(e) => {
+                setSelectedStudentId(e.target.value);
+                clearField("student");
+              }}
+              error={errors.student}
               options={[
                 { value: "", label: "Select a student" },
                 ...studentPickerList.map((s) => ({
@@ -226,7 +241,11 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
           <Select
             label="Branch"
             value={branchFilter}
-            onChange={(e) => setBranchFilter(e.target.value)}
+            onChange={(e) => {
+              setBranchFilter(e.target.value);
+              clearField("branch");
+            }}
+            error={errors.branch}
             options={
               isAdmin
                 ? branches.map((b) => ({ value: b.id, label: b.name }))
@@ -259,7 +278,11 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
             <Select
               label="Class"
               value={classFilter}
-              onChange={(e) => setClassFilter(e.target.value)}
+              onChange={(e) => {
+                setClassFilter(e.target.value);
+                clearField("class");
+              }}
+              error={errors.class}
               options={[
                 { value: "", label: "Select a class" },
                 ...classOptions.map((c) => ({ value: c, label: c })),

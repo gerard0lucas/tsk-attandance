@@ -9,6 +9,8 @@ import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
+import { validateUserFields } from "../../lib/validation";
+import { useFormValidation } from "../../hooks/useFormValidation";
 import type { BranchUser } from "../../types";
 
 export function ManagerUsers() {
@@ -31,6 +33,9 @@ export function ManagerUsers() {
   const [address, setAddress] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "name" | "email" | "password" | "phone"
+  >();
 
   const reset = () => {
     setName("");
@@ -40,10 +45,20 @@ export function ManagerUsers() {
     setAddress("");
     setPhoto(undefined);
     setEditing(null);
+    clearAll();
   };
 
   const save = async () => {
-    if (!name.trim() || !email.trim() || !branchId) return;
+    if (
+      !validate(() =>
+        validateUserFields(
+          { name, email, password, phone },
+          { requirePassword: !editing },
+        ),
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       const profileFields = {
@@ -58,7 +73,6 @@ export function ManagerUsers() {
           ...profileFields,
         });
       } else {
-        if (!password.trim()) return;
         await addBranchUser({
           name: name.trim(),
           email: email.trim(),
@@ -84,6 +98,7 @@ export function ManagerUsers() {
     setAddress(u.address);
     setPhoto(u.photo);
     setPassword("");
+    clearAll();
     setOpen(true);
   };
 
@@ -175,13 +190,36 @@ export function ManagerUsers() {
       >
         <FormStack>
           <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
-          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input
+            label="Name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              clearField("name");
+            }}
+            error={errors.name}
+            required
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              clearField("email");
+            }}
+            error={errors.email}
+            required
+          />
           <Input
             label="Phone number"
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              clearField("phone");
+            }}
+            error={errors.phone}
           />
           <Input
             label="Address"
@@ -193,7 +231,11 @@ export function ManagerUsers() {
               label="Password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                clearField("password");
+              }}
+              error={errors.password}
               required
             />
           )}

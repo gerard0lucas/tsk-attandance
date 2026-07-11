@@ -17,6 +17,8 @@ import {
   tableHeadCell,
 } from "../../components/ui/TableWrap";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
+import { validateUserFields } from "../../lib/validation";
+import { useFormValidation } from "../../hooks/useFormValidation";
 import type { Manager } from "../../types";
 
 export function AdminManagers() {
@@ -40,6 +42,9 @@ export function AdminManagers() {
   const [photo, setPhoto] = useState<string | undefined>();
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "name" | "email" | "password" | "phone" | "branchId"
+  >();
 
   const reset = () => {
     setName("");
@@ -50,10 +55,20 @@ export function AdminManagers() {
     setPhoto(undefined);
     setBranchId(branches[0]?.id ?? "");
     setEditing(null);
+    clearAll();
   };
 
   const save = async () => {
-    if (!name.trim() || !email.trim() || !branchId) return;
+    if (
+      !validate(() =>
+        validateUserFields(
+          { name, email, password, phone, branchId },
+          { requirePassword: !editing },
+        ),
+      )
+    ) {
+      return;
+    }
     setSaving(true);
     try {
       setNotice("");
@@ -75,7 +90,6 @@ export function AdminManagers() {
           );
         }
       } else {
-        if (!password.trim()) return;
         const manager = await addManager({
           name: name.trim(),
           email: email.trim(),
@@ -109,6 +123,7 @@ export function AdminManagers() {
     setPhoto(m.photo);
     setBranchId(m.branchId || (branches[0]?.id ?? ""));
     setPassword("");
+    clearAll();
     setOpen(true);
   };
 
@@ -252,7 +267,7 @@ export function AdminManagers() {
             <Button variant="outline" onClick={() => { setOpen(false); reset(); }}>
               Cancel
             </Button>
-            <Button onClick={() => void save()} disabled={saving || !branchId}>
+            <Button onClick={() => void save()} disabled={saving}>
               {saving ? "Saving…" : editing ? "Save" : "Create"}
             </Button>
           </FormActions>
@@ -260,13 +275,36 @@ export function AdminManagers() {
       >
         <FormStack>
           <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
-          <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <Input
+            label="Name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              clearField("name");
+            }}
+            error={errors.name}
+            required
+          />
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              clearField("email");
+            }}
+            error={errors.email}
+            required
+          />
           <Input
             label="Phone number"
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              clearField("phone");
+            }}
+            error={errors.phone}
           />
           <Input
             label="Address"
@@ -276,7 +314,11 @@ export function AdminManagers() {
           <Select
             label="Branch"
             value={branchId}
-            onChange={(e) => setBranchId(e.target.value)}
+            onChange={(e) => {
+              setBranchId(e.target.value);
+              clearField("branchId");
+            }}
+            error={errors.branchId}
             options={branches.map((b) => ({ value: b.id, label: b.name }))}
           />
           {!editing && (
@@ -285,7 +327,11 @@ export function AdminManagers() {
                 label="Password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  clearField("password");
+                }}
+                error={errors.password}
                 required
               />
               <p className="text-xs leading-relaxed text-mist">

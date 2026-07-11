@@ -11,6 +11,8 @@ import type {
 } from "../../types";
 import type { BranchInput } from "../branch";
 import { fetchSessionProfile } from "../session";
+import { normalizeStudentName } from "../student";
+import { sanitizeRollNumber } from "../validation";
 import {
   toAttendance,
   toBranch,
@@ -376,19 +378,22 @@ export async function insertStudent(data: {
   rollNumber: string;
   class: string;
   gender: Student["gender"];
+  medium?: Student["medium"];
   schoolName?: string;
   phone?: string;
   photo?: string;
 }): Promise<Student> {
   const qrToken = generateQrToken();
+  const rollNumber = sanitizeRollNumber(data.rollNumber);
   const { data: row, error } = await supabase
     .from("students")
     .insert({
       branch_id: data.branchId,
-      name: data.name,
-      roll_number: data.rollNumber,
+      name: normalizeStudentName(data.name),
+      roll_number: rollNumber,
       class: data.class,
       gender: data.gender,
+      medium: data.medium ?? "english",
       school_name: data.schoolName ?? "",
       phone: data.phone ?? "",
       qr_token: qrToken,
@@ -397,7 +402,7 @@ export async function insertStudent(data: {
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) throw new Error(getDbErrorMessage(error));
   const student = toStudent(row as StudentRow);
 
   if (data.photo) {
@@ -425,6 +430,7 @@ export async function patchStudent(
     rollNumber: string;
     class: string;
     gender: Student["gender"];
+    medium: Student["medium"];
     schoolName: string;
     phone: string;
     active: boolean;
@@ -433,10 +439,11 @@ export async function patchStudent(
 ): Promise<Student> {
   const payload: Record<string, unknown> = {};
   if (data.branchId !== undefined) payload.branch_id = data.branchId;
-  if (data.name !== undefined) payload.name = data.name;
-  if (data.rollNumber !== undefined) payload.roll_number = data.rollNumber;
+  if (data.name !== undefined) payload.name = normalizeStudentName(data.name);
+  if (data.rollNumber !== undefined) payload.roll_number = sanitizeRollNumber(data.rollNumber);
   if (data.class !== undefined) payload.class = data.class;
   if (data.gender !== undefined) payload.gender = data.gender;
+  if (data.medium !== undefined) payload.medium = data.medium;
   if (data.schoolName !== undefined) payload.school_name = data.schoolName;
   if (data.phone !== undefined) payload.phone = data.phone;
   if (data.active !== undefined) payload.active = data.active;
@@ -452,7 +459,7 @@ export async function patchStudent(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) throw new Error(getDbErrorMessage(error));
   return toStudent(row as StudentRow);
 }
 

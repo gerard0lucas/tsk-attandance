@@ -102,9 +102,20 @@ export function DailyBarChart({
     );
   }
 
+  const points = data.filter((point) => point.present > 0);
+  if (points.length === 0) {
+    return (
+      <ReportChartFrame>
+        <div className="flex h-full items-center justify-center text-sm text-mist">
+          {emptyLabel}
+        </div>
+      </ReportChartFrame>
+    );
+  }
+
   return (
     <ReportChartFrame>
-      <GroupedBars rows={data} labelKey="label" series={series} />
+      <GroupedBars rows={points} labelKey="label" series={series} />
       <ChartLegend series={series} />
     </ReportChartFrame>
   );

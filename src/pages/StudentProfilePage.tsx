@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Swal from "sweetalert2";
+import { toastError, toastInfo, toastSuccess } from "../lib/toast";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useStore } from "../store/useStore";
@@ -7,7 +8,9 @@ import { canAccessBranch } from "../lib/branchAccess";
 import { formatReportDate } from "../lib/attendanceReport";
 import { todayKey } from "../lib/dates";
 import { parseDateKey } from "../lib/reportRanges";
-import { formatGender, GENDER_OPTIONS } from "../lib/student";
+import { formatGender, formatMedium, GENDER_OPTIONS, CLASS_OPTIONS, MEDIUM_OPTIONS, normalizeStudentName, parseStudentClass } from "../lib/student";
+import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
+import { useFormValidation } from "../hooks/useFormValidation";
 import { StudentPhoto } from "../components/StudentPhoto";
 import { StudentActionIcons } from "../components/StudentActionIcons";
 import { StudentAttendanceCalendar } from "../components/StudentAttendanceCalendar";
@@ -15,11 +18,12 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
+import { RollNumberInput } from "../components/ui/RollNumberInput";
 import { Select } from "../components/ui/Select";
 import { Modal } from "../components/ui/Modal";
 import { FormActions, FormStack } from "../components/ui/FormStack";
 import { PhotoUpload } from "../components/PhotoUpload";
-import type { Gender } from "../types";
+import type { Gender, Medium } from "../types";
 
 function resolveStudentsBase(pathname: string): string {
   if (pathname.startsWith("/admin")) return "/admin/students";
@@ -32,6 +36,7 @@ export function StudentProfilePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const session = useStore((s) => s.session);
+  const students = useStore((s) => s.students);
   const attendance = useStore((s) => s.attendance);
   const getStudent = useStore((s) => s.getStudent);
   const getBranch = useStore((s) => s.getBranch);
@@ -51,9 +56,13 @@ export function StudentProfilePage() {
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("male");
+  const [medium, setMedium] = useState<Medium>("english");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "name" | "rollNumber" | "studentClass" | "medium" | "phone"
+  >();
 
   if (!studentId || !student) {
     return <Navigate to={studentsBase} replace />;
@@ -65,24 +74,36 @@ export function StudentProfilePage() {
 
   const openEdit = () => {
     setName(student.name);
-    setRollNumber(student.rollNumber);
-    setStudentClass(student.class);
+    setRollNumber(sanitizeRollNumber(student.rollNumber));
+    setStudentClass(parseStudentClass(student.class));
     setGender(student.gender);
+    setMedium(student.medium);
     setSchoolName(student.schoolName);
     setPhone(student.phone);
     setPhoto(student.photo);
+    clearAll();
     setFormOpen(true);
   };
 
   const save = async () => {
-    if (!name.trim() || !rollNumber.trim() || !studentClass.trim()) return;
+    if (
+      !validate(() =>
+        validateStudentFields(
+          { name, rollNumber, studentClass, medium, phone },
+          { students, excludeStudentId: student.id },
+        ),
+      )
+    ) {
+      return;
+    }
     try {
       await updateStudent(student.id, {
         branchId: student.branchId,
-        name: name.trim(),
-        rollNumber: rollNumber.trim(),
+        name: normalizeStudentName(name),
+        rollNumber: sanitizeRollNumber(rollNumber),
         class: studentClass.trim(),
         gender,
+        medium,
         schoolName: schoolName.trim(),
         phone: phone.trim(),
         photo: photo || undefined,
@@ -102,12 +123,7 @@ export function StudentProfilePage() {
     if (!session) return;
 
     if (dateKey > todayKey()) {
-      await Swal.fire({
-        icon: "info",
-        title: "Cannot edit",
-        text: "Future dates cannot be edited.",
-        confirmButtonColor: "#00303f",
-      });
+      toastInfo("Future dates cannot be edited.", "Cannot edit");
       return;
     }
 
@@ -131,20 +147,9 @@ export function StudentProfilePage() {
       if (!result.isConfirmed) return;
       try {
         await deleteAttendance(record.id);
-        await Swal.fire({
-          icon: "success",
-          title: "Updated",
-          text: "Marked absent.",
-          timer: 1500,
-          showConfirmButton: false,
-        });
+        toastSuccess("Marked absent.", "Updated");
       } catch {
-        await Swal.fire({
-          icon: "error",
-          title: "Could not update",
-          text: "Failed to remove attendance.",
-          confirmButtonColor: "#00303f",
-        });
+        toastError("Failed to remove attendance.", "Could not update");
       }
       return;
     }
@@ -163,14 +168,11 @@ export function StudentProfilePage() {
     if (!result.isConfirmed) return;
 
     const res = await markAttendanceForDate(student.id, dateKey, session.userId);
-    await Swal.fire({
-      icon: res.ok ? "success" : "error",
-      title: res.ok ? "Updated" : "Could not update",
-      text: res.message,
-      confirmButtonColor: "#00303f",
-      timer: res.ok ? 1500 : undefined,
-      showConfirmButton: !res.ok,
-    });
+    if (res.ok) {
+      toastSuccess(res.message, "Updated");
+    } else {
+      toastError(res.message, "Could not update");
+    }
   };
 
   return (
@@ -211,6 +213,10 @@ export function StudentProfilePage() {
             <p>
               <span className="text-mist">Class:</span>{" "}
               <span className="text-cerulean">{student.class}</span>
+            </p>
+            <p>
+              <span className="text-mist">Medium:</span>{" "}
+              <span className="text-cerulean">{formatMedium(student.medium)}</span>
             </p>
             {student.schoolName && (
               <p>
@@ -276,20 +282,47 @@ export function StudentProfilePage() {
       >
         <FormStack>
           <PhotoUpload name={name} photo={photo} onChange={setPhoto} />
-          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
           <Input
-            label="Roll number"
-            type="number"
-            inputMode="numeric"
-            value={rollNumber}
-            onChange={(e) => setRollNumber(e.target.value)}
+            label="Name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value.toUpperCase());
+              clearField("name");
+            }}
+            error={errors.name}
             required
           />
-          <Input
+          <RollNumberInput
+            value={rollNumber}
+            onChange={(value) => {
+              setRollNumber(value);
+              clearField("rollNumber");
+            }}
+            error={errors.rollNumber}
+            required
+          />
+          <Select
             label="Class"
             value={studentClass}
-            onChange={(e) => setStudentClass(e.target.value)}
-            required
+            onChange={(e) => {
+              setStudentClass(e.target.value);
+              clearField("studentClass");
+            }}
+            error={errors.studentClass}
+            options={[
+              { value: "", label: "Select class" },
+              ...CLASS_OPTIONS,
+            ]}
+          />
+          <Select
+            label="Medium"
+            value={medium}
+            onChange={(e) => {
+              setMedium(e.target.value as Medium);
+              clearField("medium");
+            }}
+            error={errors.medium}
+            options={MEDIUM_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
           />
           <Input
             label="School name"
@@ -300,7 +333,11 @@ export function StudentProfilePage() {
             label="Phone number"
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              clearField("phone");
+            }}
+            error={errors.phone}
           />
           <Select
             label="Gender"

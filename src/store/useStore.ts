@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { branchAccessError } from "../lib/branchAccess";
 import { todayKey } from "../lib/dates";
+import { sortStudentsByRollNumber } from "../lib/student";
 import { isSupabaseConfigured } from "../lib/supabase";
 import * as db from "../lib/db";
 
@@ -86,6 +87,7 @@ interface AppState {
     rollNumber: string;
     class: string;
     gender: Student["gender"];
+    medium?: Student["medium"];
     schoolName?: string;
     phone?: string;
     photo?: string;
@@ -99,6 +101,7 @@ interface AppState {
         | "rollNumber"
         | "class"
         | "gender"
+        | "medium"
         | "schoolName"
         | "phone"
         | "active"
@@ -183,6 +186,7 @@ export const useStore = create<AppState>()((set, get) => ({
       const data = await db.fetchAllData();
       set({
         ...data,
+        students: sortStudentsByRollNumber(data.students),
         dataLoading: false,
         actionError: null,
       });
@@ -332,7 +336,7 @@ export const useStore = create<AppState>()((set, get) => ({
       if (branchErr) throw new Error(branchErr);
 
       const student = await db.insertStudent(data);
-      set((s) => ({ students: [...s.students, student] }));
+      set((s) => ({ students: sortStudentsByRollNumber([...s.students, student]) }));
       return student;
     }),
 
@@ -348,7 +352,9 @@ export const useStore = create<AppState>()((set, get) => ({
 
       const student = await db.patchStudent(id, data);
       set((s) => ({
-        students: s.students.map((st) => (st.id === id ? student : st)),
+        students: sortStudentsByRollNumber(
+          s.students.map((st) => (st.id === id ? student : st)),
+        ),
       }));
       return student;
     }),
@@ -456,7 +462,8 @@ export const useStore = create<AppState>()((set, get) => ({
     return "—";
   },
   getStudent: (id) => get().students.find((s) => s.id === id),
-  getStudentsByBranch: (branchId) => get().students.filter((s) => s.branchId === branchId),
+  getStudentsByBranch: (branchId) =>
+    sortStudentsByRollNumber(get().students.filter((s) => s.branchId === branchId)),
   getAttendanceForDate: (branchId, date) =>
     get().attendance.filter((a) => a.branchId === branchId && a.date === date),
   isPresentToday: (studentId) => {

@@ -28,6 +28,7 @@ import { useStore } from "./store/useStore";
 import { useAppInit } from "./hooks/useAppInit";
 import { useStoreHydrated } from "./hooks/useStoreHydrated";
 import { isSupabaseConfigured } from "./lib/supabase";
+import { ToastContainer } from "./components/ui/ToastContainer";
 import type { UserRole } from "./types";
 
 function isValidRole(role: unknown): role is UserRole {
@@ -98,6 +99,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <ToastContainer />
       <Routes>
         <Route path="/" element={<AuthEntry />} />
         <Route path="/login" element={<Navigate to="/" replace />} />

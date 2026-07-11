@@ -23,7 +23,7 @@ import {
   studentsBySchoolSlices,
   type DashboardFilters,
 } from "../../lib/dashboardAnalytics";
-import { dailyAttendanceTrend } from "../../lib/reportAnalytics";
+import { dailyAttendanceTrend, formatAttendanceTrendSubtitle } from "../../lib/reportAnalytics";
 import {
   dashboardAttendanceRange,
   type DashboardAttendancePeriod,
@@ -121,6 +121,11 @@ export function AdminOverview() {
   const dailyTrend = useMemo(
     () => dailyAttendanceTrend(periodRecords, from, to, scopedStudents),
     [periodRecords, from, to, scopedStudents],
+  );
+
+  const trendSubtitle = useMemo(
+    () => formatAttendanceTrendSubtitle(dailyTrend),
+    [dailyTrend],
   );
 
   const presentAbsent = useMemo(
@@ -273,7 +278,7 @@ export function AdminOverview() {
         <DashboardPanel
           className="xl:col-span-4"
           title="Attendance trend"
-          subtitle={subtitle}
+          subtitle={trendSubtitle}
         >
           <WeeklyTrendChart
             data={dailyTrend}

@@ -2,6 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { isSupabaseConfigured } from "../lib/supabase";
+import { validateLoginFields } from "../lib/validation";
+import { useFormValidation } from "../hooks/useFormValidation";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import type { UserRole } from "../types";
@@ -21,20 +23,23 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { errors, clearField, clearAll, validate } = useFormValidation<
+    "email" | "password"
+  >();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
+    clearAll();
+
+    if (!validate(() => validateLoginFields(email, password))) {
+      return;
+    }
+
     setLoading(true);
 
     const trimmedEmail = email.trim();
     const trimmedPassword = password.trim();
-
-    if (!trimmedEmail || !trimmedPassword) {
-      setError("Please enter email and password.");
-      setLoading(false);
-      return;
-    }
 
     try {
       const result = await login(trimmedEmail, trimmedPassword);
@@ -67,7 +72,11 @@ export function LoginPage() {
               autoComplete="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearField("email");
+              }}
+              error={errors.email}
               placeholder="you@tsk.org"
             />
             <Input
@@ -76,7 +85,11 @@ export function LoginPage() {
               autoComplete="current-password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                clearField("password");
+              }}
+              error={errors.password}
               placeholder="Enter password"
             />
 
