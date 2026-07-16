@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Menu, MoreHorizontal, User, X } from "lucide-react";
+import { Menu, User, X } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import { APP_NAME } from "../../lib/branding";
 import { navItemsForRole, type NavItem } from "../../lib/navConfig";
 import { SidebarBrand } from "./SidebarBrand";
 import { SidebarProfile } from "./SidebarProfile";
 import type { UserRole } from "../../types";
-
-const MOBILE_PRIMARY_COUNT = 4;
 
 function NavItems({
   items,
@@ -65,9 +63,6 @@ export function DashboardLayout({ role }: { role: UserRole }) {
     return photo && photo !== session.photo ? { ...session, photo } : session;
   }, [session, managers, users]);
 
-  const mobilePrimary = nav.slice(0, MOBILE_PRIMARY_COUNT);
-  const showMore = nav.length > MOBILE_PRIMARY_COUNT;
-
   useEffect(() => {
     setMenuOpen(false);
   }, [location.pathname]);
@@ -86,29 +81,28 @@ export function DashboardLayout({ role }: { role: UserRole }) {
   const sideLinkClass =
     "flex items-center gap-3 rounded px-3 py-2.5 text-sm text-morning hover:bg-white/10 min-h-[44px]";
 
-  const bottomLinkClass =
-    "touch-target flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-[10px] leading-tight text-morning min-h-[52px] max-[380px]:text-[9px] sm:text-[11px]";
-
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-mist/30 bg-cerulean px-3 py-2.5 text-white pt-safe sm:px-4 sm:py-3 lg:hidden">
-        <div className="min-w-0 pr-2">
-          <p className="truncate text-sm font-semibold tracking-wide sm:text-base">
-            {APP_NAME}
-          </p>
-          <p className="flex items-center gap-1 truncate text-[11px] text-morning sm:text-xs">
-            <User className="h-3 w-3 shrink-0" aria-hidden />
-            <span>{roleLabel}</span>
-          </p>
+      <header className="sticky top-0 z-30 border-b border-mist/30 bg-cerulean text-white pt-safe lg:hidden">
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold leading-tight tracking-wide sm:text-base">
+              {APP_NAME}
+            </p>
+            <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] leading-none text-morning sm:text-xs">
+              <User className="h-3 w-3 shrink-0" aria-hidden />
+              <span>{roleLabel}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Open menu"
+            className="touch-target flex h-11 w-11 shrink-0 items-center justify-center rounded bg-white/10 hover:bg-white/20"
+            onClick={() => setMenuOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
-        <button
-          type="button"
-          aria-label="Open menu"
-          className="touch-target flex h-11 w-11 shrink-0 items-center justify-center rounded bg-white/10 hover:bg-white/20"
-          onClick={() => setMenuOpen(true)}
-        >
-          <Menu className="h-5 w-5" />
-        </button>
       </header>
 
       {menuOpen && (
@@ -120,19 +114,21 @@ export function DashboardLayout({ role }: { role: UserRole }) {
             onClick={() => setMenuOpen(false)}
           />
           <aside className="fixed inset-y-0 right-0 z-50 flex h-dvh w-[min(100%,300px)] flex-col bg-cerulean text-white shadow-xl lg:hidden">
-            <div className="flex items-center justify-between border-b border-mist/30 px-4 py-4 pt-safe">
-              <SidebarBrand
-                roleLabel={roleLabel}
-                className="min-w-0 flex-1 items-start text-left"
-              />
-              <button
-                type="button"
-                aria-label="Close"
-                className="touch-target ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded bg-white/10 hover:bg-white/20"
-                onClick={() => setMenuOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </button>
+            <div className="border-b border-mist/30 pt-safe">
+              <div className="flex items-center justify-between gap-2 px-4 py-4">
+                <SidebarBrand
+                  roleLabel={roleLabel}
+                  className="min-w-0 flex-1 items-start text-left"
+                />
+                <button
+                  type="button"
+                  aria-label="Close"
+                  className="touch-target flex h-10 w-10 shrink-0 items-center justify-center rounded bg-white/10 hover:bg-white/20"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             <div className="border-b border-mist/30 px-4 py-4">
               <SidebarProfile session={sessionWithPhoto} onSignOut={signOut} compact />
@@ -161,37 +157,7 @@ export function DashboardLayout({ role }: { role: UserRole }) {
         </div>
       </aside>
 
-      <nav
-        className="fixed bottom-0 left-0 right-0 z-30 flex border-t border-mist/30 bg-cerulean px-safe lg:hidden pb-safe"
-        aria-label="Main navigation"
-      >
-        {mobilePrimary.map(({ to, label, end, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `${bottomLinkClass} ${isActive ? "bg-black/20 font-medium text-honey" : ""}`
-            }
-          >
-            <Icon className="h-5 w-5 shrink-0 max-[380px]:h-4 max-[380px]:w-4" aria-hidden />
-            <span className="max-w-full truncate text-center">{label}</span>
-          </NavLink>
-        ))}
-        {showMore && (
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            className={`${bottomLinkClass} ${menuOpen ? "bg-black/20 text-honey" : ""}`}
-            aria-label="More menu"
-          >
-            <MoreHorizontal className="h-5 w-5 shrink-0 max-[380px]:h-4 max-[380px]:w-4" />
-            <span>More</span>
-          </button>
-        )}
-      </nav>
-
-      <main className="flex-1 overflow-x-hidden bg-page px-3 py-3 pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))] pt-1 sm:px-4 sm:py-4 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] lg:ml-52 lg:min-h-dvh lg:p-6 lg:pb-6">
+      <main className="flex-1 overflow-x-hidden bg-page px-3 py-3 pb-safe pt-1 sm:px-4 sm:py-4 lg:ml-52 lg:min-h-dvh lg:p-6">
         <div className="mx-auto w-full max-w-6xl min-w-0 space-y-3 sm:space-y-4">
           {dataLoading && (
             <p className="mb-3 rounded border border-morning bg-white px-3 py-2 text-sm text-mist sm:mb-4">

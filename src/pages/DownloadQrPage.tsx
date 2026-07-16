@@ -3,14 +3,14 @@ import { Download } from "lucide-react";
 import { toastError, toastSuccess } from "../lib/toast";
 import { useStore } from "../store/useStore";
 import { downloadStudentQrPng, downloadStudentsQrZip } from "../lib/qrExport";
-import { filterStudents, sortStudentsByRollNumber } from "../lib/student";
+import { findStudentByRollNumber, sortStudentsByRollNumber } from "../lib/student";
 import { validateQrDownload } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Select } from "../components/ui/Select";
-import { Input } from "../components/ui/Input";
+import { RollNumberInput } from "../components/ui/RollNumberInput";
 import type { Student, UserRole } from "../types";
 
 type DownloadMode = "individual" | "branch" | "class" | "all";
@@ -33,8 +33,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
     role === "manager" || role === "user" ? session?.branchId : undefined;
 
   const [mode, setMode] = useState<DownloadMode>("individual");
-  const [studentSearch, setStudentSearch] = useState("");
-  const [selectedStudentId, setSelectedStudentId] = useState("");
+  const [rollNumber, setRollNumber] = useState("");
   const [branchFilter, setBranchFilter] = useState(
     () => scopedBranchId ?? branches[0]?.id ?? "all",
   );
@@ -52,6 +51,19 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
     return sortStudentsByRollNumber(list);
   }, [students, scopedBranchId]);
 
+  const individualSearchList = useMemo(() => {
+    let list = scopedStudents;
+    if (isAdmin && branchFilter !== "all") {
+      list = list.filter((s) => s.branchId === branchFilter);
+    }
+    return list;
+  }, [scopedStudents, isAdmin, branchFilter]);
+
+  const matchedIndividualStudent = useMemo(
+    () => findStudentByRollNumber(individualSearchList, rollNumber),
+    [individualSearchList, rollNumber],
+  );
+
   const classOptions = useMemo(() => {
     const source =
       mode === "branch" && branchFilter !== "all"
@@ -60,18 +72,9 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
     return [...new Set(source.map((s) => s.class.trim()).filter(Boolean))].sort();
   }, [scopedStudents, mode, branchFilter]);
 
-  const studentPickerList = useMemo(() => {
-    let list = scopedStudents;
-    if (isAdmin && branchFilter !== "all") {
-      list = list.filter((s) => s.branchId === branchFilter);
-    }
-    return filterStudents(list, studentSearch);
-  }, [scopedStudents, isAdmin, branchFilter, studentSearch]);
-
   const targetStudents = useMemo((): Student[] => {
     if (mode === "individual") {
-      const student = scopedStudents.find((s) => s.id === selectedStudentId);
-      return student ? [student] : [];
+      return matchedIndividualStudent ? [matchedIndividualStudent] : [];
     }
     if (mode === "branch") {
       if (branchFilter === "all") return [];
@@ -88,7 +91,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
     return scopedStudents;
   }, [
     mode,
-    selectedStudentId,
+    matchedIndividualStudent,
     branchFilter,
     classFilter,
     scopedStudents,
@@ -106,7 +109,8 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
     if (
       !validate(() =>
         validateQrDownload(mode, {
-          selectedStudentId,
+          rollNumber,
+          studentFound: Boolean(matchedIndividualStudent),
           branchFilter,
           classFilter,
         }),
@@ -173,6 +177,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
               type="button"
               onClick={() => {
                 setMode(value);
+                setRollNumber("");
                 clearAll();
               }}
               className={`rounded-xl border px-3 py-3 text-left transition-colors ${
@@ -203,8 +208,8 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
                 value={branchFilter}
                 onChange={(e) => {
                   setBranchFilter(e.target.value);
-                  setSelectedStudentId("");
-                  clearField("branch");
+                  setRollNumber("");
+                  clearField("student");
                 }}
                 options={[
                   { value: "all", label: "All branches" },
@@ -212,28 +217,25 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
                 ]}
               />
             )}
-            <Input
-              label="Search student"
-              placeholder="Name, roll number, or phone"
-              value={studentSearch}
-              onChange={(e) => setStudentSearch(e.target.value)}
-            />
-            <Select
-              label="Student"
-              value={selectedStudentId}
-              onChange={(e) => {
-                setSelectedStudentId(e.target.value);
+            <RollNumberInput
+              value={rollNumber}
+              onChange={(value) => {
+                setRollNumber(value);
                 clearField("student");
               }}
               error={errors.student}
-              options={[
-                { value: "", label: "Select a student" },
-                ...studentPickerList.map((s) => ({
-                  value: s.id,
-                  label: `${s.name} · Roll ${s.rollNumber} · ${s.class}`,
-                })),
-              ]}
             />
+            {matchedIndividualStudent && (
+              <div className="rounded-lg border border-morning bg-white px-4 py-3 text-sm">
+                <p className="font-medium text-cerulean">{matchedIndividualStudent.name}</p>
+                <p className="mt-1 text-mist">
+                  Roll {matchedIndividualStudent.rollNumber} · Class {matchedIndividualStudent.class}
+                  {isAdmin && (
+                    <> · {getBranch(matchedIndividualStudent.branchId)?.name ?? "—"}</>
+                  )}
+                </p>
+              </div>
+            )}
           </>
         )}
 
@@ -301,7 +303,11 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
 
         <div className="rounded-lg border border-morning bg-morning/20 px-4 py-3 text-sm text-cerulean">
           {targetStudents.length === 0 ? (
-            <span className="text-mist">Select filters above to preview how many QR codes will download.</span>
+            <span className="text-mist">
+              {mode === "individual"
+                ? "Enter a roll number to find the student."
+                : "Select filters above to preview how many QR codes will download."}
+            </span>
           ) : (
             <span>
               <strong>{targetStudents.length}</strong> student

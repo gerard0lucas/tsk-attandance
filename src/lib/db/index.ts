@@ -381,6 +381,7 @@ export async function insertStudent(data: {
   medium?: Student["medium"];
   schoolName?: string;
   phone?: string;
+  address?: string;
   photo?: string;
 }): Promise<Student> {
   const qrToken = generateQrToken();
@@ -393,9 +394,10 @@ export async function insertStudent(data: {
       roll_number: rollNumber,
       class: data.class,
       gender: data.gender,
-      medium: data.medium ?? "english",
+      medium: data.medium ?? "na",
       school_name: data.schoolName ?? "",
       phone: data.phone ?? "",
+      address: data.address ?? "",
       qr_token: qrToken,
       active: true,
     })
@@ -433,6 +435,7 @@ export async function patchStudent(
     medium: Student["medium"];
     schoolName: string;
     phone: string;
+    address: string;
     active: boolean;
     photo?: string;
   }>,
@@ -446,6 +449,7 @@ export async function patchStudent(
   if (data.medium !== undefined) payload.medium = data.medium;
   if (data.schoolName !== undefined) payload.school_name = data.schoolName;
   if (data.phone !== undefined) payload.phone = data.phone;
+  if (data.address !== undefined) payload.address = data.address;
   if (data.active !== undefined) payload.active = data.active;
 
   if (data.photo !== undefined) {

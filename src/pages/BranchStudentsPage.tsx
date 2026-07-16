@@ -38,10 +38,11 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
-  const [gender, setGender] = useState<Gender>("male");
-  const [medium, setMedium] = useState<Medium>("english");
+  const [gender, setGender] = useState<Gender>("na");
+  const [medium, setMedium] = useState<Medium>("na");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
   const { errors, clearField, clearAll, validate } = useFormValidation<
     "name" | "rollNumber" | "studentClass" | "medium" | "phone"
@@ -72,10 +73,11 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     setName("");
     setRollNumber("");
     setStudentClass("");
-    setGender("male");
-    setMedium("english");
+    setGender("na");
+    setMedium("na");
     setSchoolName("");
     setPhone("");
+    setAddress("");
     setPhoto(undefined);
     setEditing(null);
     clearAll();
@@ -100,6 +102,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     setMedium(s.medium);
     setSchoolName(s.schoolName);
     setPhone(s.phone);
+    setAddress(s.address);
     setPhoto(s.photo);
     clearAll();
     setFormOpen(true);
@@ -127,6 +130,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
+          address: address.trim(),
           photo: photo || undefined,
         });
         closeForm();
@@ -140,6 +144,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
+          address: address.trim(),
           photo,
         });
         closeForm();
@@ -197,6 +202,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
                   <p className="text-sm text-mist">School: {s.schoolName}</p>
                 )}
                 {s.phone && <p className="text-sm text-mist">Phone: {s.phone}</p>}
+                {s.address && <p className="text-sm text-mist">Address: {s.address}</p>}
                 <p className="text-sm text-mist">Gender: {formatGender(s.gender)}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {!s.active && <Badge tone="neutral">Inactive</Badge>}
@@ -291,6 +297,11 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
               clearField("phone");
             }}
             error={errors.phone}
+          />
+          <Input
+            label="Address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
           />
           <Select
             label="Gender"

@@ -1,8 +1,8 @@
 export type UserRole = "admin" | "manager" | "user";
 
-export type Gender = "male" | "female" | "other";
+export type Gender = "male" | "female" | "other" | "na";
 
-export type Medium = "english" | "kannada" | "marathi";
+export type Medium = "english" | "kannada" | "marathi" | "na";
 
 export interface Branch {
   id: string;
@@ -55,6 +55,7 @@ export interface Student {
   medium: Medium;
   schoolName: string;
   phone: string;
+  address: string;
   photo?: string;
   qrToken: string;
   active: boolean;

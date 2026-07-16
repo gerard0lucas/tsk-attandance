@@ -55,10 +55,11 @@ export function StudentProfilePage() {
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
-  const [gender, setGender] = useState<Gender>("male");
-  const [medium, setMedium] = useState<Medium>("english");
+  const [gender, setGender] = useState<Gender>("na");
+  const [medium, setMedium] = useState<Medium>("na");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
   const { errors, clearField, clearAll, validate } = useFormValidation<
     "name" | "rollNumber" | "studentClass" | "medium" | "phone"
@@ -80,6 +81,7 @@ export function StudentProfilePage() {
     setMedium(student.medium);
     setSchoolName(student.schoolName);
     setPhone(student.phone);
+    setAddress(student.address);
     setPhoto(student.photo);
     clearAll();
     setFormOpen(true);
@@ -106,6 +108,7 @@ export function StudentProfilePage() {
         medium,
         schoolName: schoolName.trim(),
         phone: phone.trim(),
+        address: address.trim(),
         photo: photo || undefined,
       });
       setFormOpen(false);
@@ -230,6 +233,12 @@ export function StudentProfilePage() {
                 <span className="text-cerulean">{student.phone}</span>
               </p>
             )}
+            {student.address && (
+              <p>
+                <span className="text-mist">Address:</span>{" "}
+                <span className="text-cerulean">{student.address}</span>
+              </p>
+            )}
             <p>
               <span className="text-mist">Gender:</span>{" "}
               <span className="text-cerulean">{formatGender(student.gender)}</span>
@@ -338,6 +347,11 @@ export function StudentProfilePage() {
               clearField("phone");
             }}
             error={errors.phone}
+          />
+          <Input
+            label="Address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
           />
           <Select
             label="Gender"

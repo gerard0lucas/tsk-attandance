@@ -6,7 +6,15 @@ export const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: "male", label: "Male" },
   { value: "female", label: "Female" },
   { value: "other", label: "Other" },
+  { value: "na", label: "NA" },
 ];
+
+export function parseGender(value: string | undefined): Gender {
+  if (value === "male" || value === "female" || value === "other" || value === "na") {
+    return value;
+  }
+  return "na";
+}
 
 export const CLASS_OPTIONS = Array.from({ length: 12 }, (_, i) => {
   const value = String(i + 1);
@@ -17,11 +25,14 @@ export const MEDIUM_OPTIONS: { value: Medium; label: string }[] = [
   { value: "english", label: "English" },
   { value: "kannada", label: "Kannada" },
   { value: "marathi", label: "Marathi" },
+  { value: "na", label: "NA" },
 ];
 
 export function parseMedium(value: string | undefined): Medium {
-  if (value === "english" || value === "kannada" || value === "marathi") return value;
-  return "english";
+  if (value === "english" || value === "kannada" || value === "marathi" || value === "na") {
+    return value;
+  }
+  return "na";
 }
 
 export function formatMedium(medium: Medium): string {
@@ -94,6 +105,7 @@ export function filterStudents(students: Student[], query: string): Student[] {
       s.rollNumber.toLowerCase().includes(lower) ||
       s.phone.toLowerCase().includes(lower) ||
       s.schoolName.toLowerCase().includes(lower) ||
+      s.address.toLowerCase().includes(lower) ||
       formatMedium(s.medium).toLowerCase().includes(lower) ||
       s.qrToken.toLowerCase().includes(lower) ||
       s.id.toLowerCase().includes(lower) ||
@@ -104,10 +116,7 @@ export function filterStudents(students: Student[], query: string): Student[] {
 
 export function normalizeStudentFields(student: Partial<Student> & { id: string }): Student {
   const raw = student as Student & { templeId?: string };
-  const gender =
-    raw.gender === "male" || raw.gender === "female" || raw.gender === "other"
-      ? raw.gender
-      : "other";
+  const gender = parseGender(raw.gender);
 
   return {
     id: raw.id,
@@ -119,6 +128,7 @@ export function normalizeStudentFields(student: Partial<Student> & { id: string 
     medium: parseMedium(raw.medium),
     schoolName: raw.schoolName?.trim() || "",
     phone: raw.phone?.trim() || "",
+    address: raw.address?.trim() || "",
     photo: raw.photo || undefined,
     qrToken: raw.qrToken ?? "",
     active: raw.active !== false,

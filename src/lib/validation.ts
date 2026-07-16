@@ -68,8 +68,13 @@ export function validateClass(value: string): string | undefined {
 
 export function validateMedium(value: string): string | undefined {
   if (!value.trim()) return "Medium is required.";
-  if (value !== "english" && value !== "kannada" && value !== "marathi") {
-    return "Select English, Kannada, or Marathi.";
+  if (
+    value !== "english" &&
+    value !== "kannada" &&
+    value !== "marathi" &&
+    value !== "na"
+  ) {
+    return "Select English, Kannada, Marathi, or NA.";
   }
 }
 
@@ -188,14 +193,20 @@ export type QrDownloadFormFields = "student" | "branch" | "class";
 export function validateQrDownload(
   mode: "individual" | "branch" | "class" | "all",
   fields: {
-    selectedStudentId: string;
+    rollNumber: string;
+    studentFound: boolean;
     branchFilter: string;
     classFilter: string;
   },
 ): FormErrors<QrDownloadFormFields> {
   const errors: FormErrors<QrDownloadFormFields> = {};
-  if (mode === "individual" && !fields.selectedStudentId.trim()) {
-    errors.student = "Select a student.";
+  if (mode === "individual") {
+    const rollErr = validateRollNumber(fields.rollNumber);
+    if (rollErr) {
+      errors.student = rollErr === "Roll number is required." ? "Enter a roll number." : rollErr;
+    } else if (!fields.studentFound) {
+      errors.student = "No student found with this roll number.";
+    }
   }
   if (mode === "branch" && fields.branchFilter === "all") {
     errors.branch = "Select a branch.";

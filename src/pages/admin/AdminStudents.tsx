@@ -21,6 +21,7 @@ import {
 import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
 import { StudentActionIcons } from "../../components/StudentActionIcons";
+import { StudentDetailsModal } from "../../components/StudentDetailsModal";
 import { filterStudents, formatGender, formatMedium, GENDER_OPTIONS, CLASS_OPTIONS, MEDIUM_OPTIONS, normalizeStudentName, parseStudentClass, sortStudentsByRollNumber } from "../../lib/student";
 import { validateStudentFields, sanitizeRollNumber } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
@@ -38,14 +39,16 @@ export function AdminStudents() {
   const [filterBranch, setFilterBranch] = useState("all");
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
+  const [viewing, setViewing] = useState<Student | null>(null);
   const [editing, setEditing] = useState<Student | null>(null);
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
-  const [gender, setGender] = useState<Gender>("male");
-  const [medium, setMedium] = useState<Medium>("english");
+  const [gender, setGender] = useState<Gender>("na");
+  const [medium, setMedium] = useState<Medium>("na");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [photo, setPhoto] = useState<string | undefined>();
   const { errors, clearField, clearAll, validate } = useFormValidation<
@@ -73,10 +76,11 @@ export function AdminStudents() {
     setName("");
     setRollNumber("");
     setStudentClass("");
-    setGender("male");
-    setMedium("english");
+    setGender("na");
+    setMedium("na");
     setSchoolName("");
     setPhone("");
+    setAddress("");
     setBranchId(branches[0]?.id ?? "");
     setPhoto(undefined);
     setEditing(null);
@@ -93,6 +97,14 @@ export function AdminStudents() {
     setFormOpen(true);
   };
 
+  const openView = (s: Student) => {
+    setViewing(s);
+  };
+
+  const closeView = () => {
+    setViewing(null);
+  };
+
   const openEdit = (s: Student) => {
     setEditing(s);
     setName(s.name);
@@ -102,6 +114,7 @@ export function AdminStudents() {
     setMedium(s.medium);
     setSchoolName(s.schoolName);
     setPhone(s.phone);
+    setAddress(s.address);
     setBranchId(s.branchId);
     setPhoto(s.photo);
     clearAll();
@@ -130,6 +143,7 @@ export function AdminStudents() {
           medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
+          address: address.trim(),
           photo: photo || undefined,
         });
         closeForm();
@@ -143,6 +157,7 @@ export function AdminStudents() {
           medium,
           schoolName: schoolName.trim(),
           phone: phone.trim(),
+          address: address.trim(),
           photo,
         });
         closeForm();
@@ -197,6 +212,7 @@ export function AdminStudents() {
             student={s}
             branchName={getBranch(s.branchId)?.name}
             present={isPresentToday(s.id)}
+            onView={() => openView(s)}
             onEdit={() => openEdit(s)}
             onQr={() => openQr(s.id)}
             onDelete={() => remove(s)}
@@ -211,20 +227,16 @@ export function AdminStudents() {
 
       <Card padding="sm" className="hidden md:block">
         <TableWrap>
-          <table className="w-full min-w-[1040px]">
+          <table className="w-full min-w-[800px]">
             <thead>
               <tr className="border-b border-morning">
-                <th className={tableHeadCell}>Photo</th>
-                <th className={tableHeadCell}>Name</th>
-                <th className={tableHeadCell}>Roll</th>
-                <th className={tableHeadCell}>Class</th>
-                <th className={tableHeadCell}>Medium</th>
-                <th className={tableHeadCell}>School</th>
-                <th className={tableHeadCell}>Phone</th>
-                <th className={tableHeadCell}>Gender</th>
-                <th className={tableHeadCell}>Branch</th>
-                <th className={tableHeadCell}>Today</th>
-                <th className={tableHeadCell}>Actions</th>
+                <th className={`${tableHeadCell} text-center`}>Photo</th>
+                <th className={`${tableHeadCell} text-center`}>Roll</th>
+                <th className={`${tableHeadCell} text-center`}>Name</th>
+                <th className={`${tableHeadCell} text-center`}>Class</th>
+                <th className={`${tableHeadCell} text-center`}>Branch</th>
+                <th className={`${tableHeadCell} text-center`}>Phone</th>
+                <th className={`${tableHeadCell} text-center`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -233,7 +245,7 @@ export function AdminStudents() {
                   key={s.id}
                   student={s}
                   branchName={getBranch(s.branchId)?.name}
-                  present={isPresentToday(s.id)}
+                  onView={() => openView(s)}
                   onEdit={() => openEdit(s)}
                   onQr={() => openQr(s.id)}
                   onDelete={() => remove(s)}
@@ -324,6 +336,11 @@ export function AdminStudents() {
             }}
             error={errors.phone}
           />
+          <Input
+            label="Address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
           <Select
             label="Gender"
             value={gender}
@@ -343,6 +360,13 @@ export function AdminStudents() {
         </FormStack>
       </Modal>
 
+      <StudentDetailsModal
+        open={viewing !== null}
+        onClose={closeView}
+        student={viewing}
+        branchName={viewing ? getBranch(viewing.branchId)?.name : undefined}
+      />
+
     </div>
   );
 }
@@ -351,6 +375,7 @@ function StudentCard({
   student,
   branchName,
   present,
+  onView,
   onEdit,
   onQr,
   onDelete,
@@ -358,6 +383,7 @@ function StudentCard({
   student: Student;
   branchName?: string;
   present: boolean;
+  onView: () => void;
   onEdit: () => void;
   onQr: () => void;
   onDelete: () => void;
@@ -367,6 +393,7 @@ function StudentCard({
       actions={
         <StudentActionIcons
           compact
+          onView={onView}
           onEdit={onEdit}
           onQr={onQr}
           onDelete={onDelete}
@@ -383,6 +410,7 @@ function StudentCard({
             <p className="text-sm text-mist">School: {student.schoolName}</p>
           )}
           {student.phone && <p className="text-sm text-mist">Phone: {student.phone}</p>}
+          {student.address && <p className="text-sm text-mist">Address: {student.address}</p>}
           <p className="text-sm text-mist">Gender: {formatGender(student.gender)}</p>
           <p className="text-sm text-mist">Branch: {branchName}</p>
           <div className="mt-2">
@@ -397,41 +425,40 @@ function StudentCard({
 function StudentRow({
   student,
   branchName,
-  present,
+  onView,
   onEdit,
   onQr,
   onDelete,
 }: {
   student: Student;
   branchName?: string;
-  present: boolean;
+  onView: () => void;
   onEdit: () => void;
   onQr: () => void;
   onDelete: () => void;
 }) {
   return (
     <tr className="border-b border-morning last:border-0">
-      <td className={tableCell}>
-        <StudentPhoto student={student} size="sm" />
+      <td className={`${tableCell} text-center`}>
+        <div className="flex justify-center">
+          <StudentPhoto student={student} size="sm" />
+        </div>
       </td>
-      <td className={tableCell}>{student.name}</td>
-      <td className={tableCellMuted}>{student.rollNumber}</td>
-      <td className={tableCell}>{student.class}</td>
-      <td className={tableCellMuted}>{formatMedium(student.medium)}</td>
-      <td className={tableCellMuted}>{student.schoolName || "—"}</td>
-      <td className={tableCellMuted}>{student.phone || "—"}</td>
-      <td className={tableCell}>{formatGender(student.gender)}</td>
-      <td className={tableCellMuted}>{branchName}</td>
-      <td className={tableCell}>
-        {present ? <Badge tone="success">Present</Badge> : <Badge tone="neutral">Absent</Badge>}
-      </td>
-      <td className={tableActionsCell}>
-        <StudentActionIcons
-          compact
-          onEdit={onEdit}
-          onQr={onQr}
-          onDelete={onDelete}
-        />
+      <td className={`${tableCellMuted} text-center`}>{student.rollNumber}</td>
+      <td className={`${tableCell} text-center`}>{student.name}</td>
+      <td className={`${tableCell} text-center`}>{student.class}</td>
+      <td className={`${tableCellMuted} text-center`}>{branchName}</td>
+      <td className={`${tableCellMuted} text-center`}>{student.phone || "—"}</td>
+      <td className={`${tableActionsCell} text-center`}>
+        <div className="inline-flex justify-center">
+          <StudentActionIcons
+            compact
+            onView={onView}
+            onEdit={onEdit}
+            onQr={onQr}
+            onDelete={onDelete}
+          />
+        </div>
       </td>
     </tr>
   );

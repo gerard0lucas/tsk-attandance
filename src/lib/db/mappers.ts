@@ -1,5 +1,5 @@
 import type { AttendanceRecord, Branch, BranchUser, Manager, Student } from "../../types";
-import { normalizeStudentName, parseMedium } from "../student";
+import { normalizeStudentName, parseGender, parseMedium } from "../student";
 import { sanitizeRollNumber } from "../validation";
 
 export type ProfileRow = {
@@ -40,6 +40,7 @@ export type StudentRow = {
   medium?: string;
   school_name?: string;
   phone?: string;
+  address?: string;
   photo_url: string | null;
   qr_token: string;
   active: boolean;
@@ -131,10 +132,11 @@ export function toStudent(row: StudentRow): Student {
     name: normalizeStudentName(row.name),
     rollNumber: sanitizeRollNumber(row.roll_number) || row.roll_number,
     class: row.class,
-    gender: row.gender,
+    gender: parseGender(row.gender),
     medium: parseMedium(row.medium),
     schoolName: row.school_name ?? "",
     phone: row.phone ?? "",
+    address: row.address ?? "",
     photo: row.photo_url ?? undefined,
     qrToken: row.qr_token,
     active: row.active,

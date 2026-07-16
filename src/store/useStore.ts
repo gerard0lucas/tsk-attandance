@@ -90,6 +90,7 @@ interface AppState {
     medium?: Student["medium"];
     schoolName?: string;
     phone?: string;
+    address?: string;
     photo?: string;
   }) => Promise<Student>;
   updateStudent: (
@@ -104,6 +105,7 @@ interface AppState {
         | "medium"
         | "schoolName"
         | "phone"
+        | "address"
         | "active"
         | "branchId"
         | "photo"
