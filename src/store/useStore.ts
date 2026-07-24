@@ -9,6 +9,7 @@ import type {
   Student,
 } from "../types";
 import { branchAccessError } from "../lib/branchAccess";
+import { pauseAuthSync, resumeAuthSync } from "../lib/authSync";
 import { todayKey } from "../lib/dates";
 import { isSupabaseConfigured } from "../lib/supabase";
 import * as db from "../lib/db";
@@ -208,34 +209,44 @@ export const useStore = create<AppState>()((set, get) => ({
         message: "Supabase is not configured. Add your project keys to .env.",
       };
     }
+    pauseAuthSync();
     try {
       const result = await db.signIn(email, password);
       if (!result.ok) return result;
 
-      let session = await db.fetchSessionProfile();
-      if (!session) {
+      let resolved = await db.resolveAuthProfile();
+      if (resolved.kind === "none") {
         await new Promise((r) => setTimeout(r, 400));
-        session = await db.fetchSessionProfile();
+        resolved = await db.resolveAuthProfile();
       }
-      if (!session) {
-        const inactive = await db.isCurrentProfileInactive().catch(() => false);
+
+      if (resolved.kind === "inactive") {
         await db.signOut();
         return {
           ok: false,
-          message: inactive
-            ? "This account has been deactivated. Contact an admin."
-            : "Signed in but no profile found. In Supabase, add a row in profiles with your user id and role (admin, manager, or user).",
+          message: "This account has been deactivated. Contact an admin.",
         };
       }
 
-      set({ session });
+      if (resolved.kind !== "session") {
+        await db.signOut();
+        return {
+          ok: false,
+          message:
+            "Signed in but no profile found. In Supabase, add a row in profiles with your user id and role (admin, manager, or user).",
+        };
+      }
+
+      set({ session: resolved.session });
       void get().loadAllData().catch(() => undefined);
-      return { ok: true, role: session.role };
+      return { ok: true, role: resolved.session.role };
     } catch (e) {
       return {
         ok: false,
         message: e instanceof Error ? e.message : "Sign in failed.",
       };
+    } finally {
+      resumeAuthSync();
     }
   },
 

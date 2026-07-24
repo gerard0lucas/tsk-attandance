@@ -4,6 +4,11 @@ import type { ProfileRow } from "./db/mappers";
 
 const VALID_ROLES: UserRole[] = ["admin", "manager", "user"];
 
+export type AuthProfileResult =
+  | { kind: "session"; session: Session }
+  | { kind: "inactive" }
+  | { kind: "none" };
+
 function toSession(row: ProfileRow): Session | null {
   if (!VALID_ROLES.includes(row.role as UserRole)) return null;
   if (row.active === false) return null;
@@ -53,8 +58,11 @@ async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
   return null;
 }
 
-/** Load app session from Supabase Auth + profiles table */
-export async function fetchSessionProfile(): Promise<Session | null> {
+/**
+ * Resolve the signed-in auth user to an app session.
+ * Distinguishes inactive profiles from missing ones (for login errors).
+ */
+export async function resolveAuthProfile(): Promise<AuthProfileResult> {
   const {
     data: { session },
     error: sessionError,
@@ -64,41 +72,48 @@ export async function fetchSessionProfile(): Promise<Session | null> {
     if (/refresh token/i.test(sessionError.message)) {
       await supabase.auth.signOut();
     }
-    return null;
+    return { kind: "none" };
   }
 
-  if (!session?.user) return null;
+  if (!session?.user) return { kind: "none" };
 
   const user = session.user;
-
   const data = await fetchProfileRow(user.id);
+
   if (data) {
-    if (data.active === false) return null;
+    if (data.active === false) return { kind: "inactive" };
     const profile = toSession(data);
-    if (profile) return profile;
+    if (profile) return { kind: "session", session: profile };
+    return { kind: "none" };
   }
 
+  // Profile row missing — only then fall back to auth metadata (bootstrap edge case).
   const metaRole = user.user_metadata?.role;
   if (VALID_ROLES.includes(metaRole as UserRole)) {
     return {
-      role: metaRole as UserRole,
-      userId: user.id,
-      name: String(user.user_metadata?.name ?? user.email ?? "User"),
-      branchId: user.user_metadata?.branch_id ?? undefined,
+      kind: "session",
+      session: {
+        role: metaRole as UserRole,
+        userId: user.id,
+        name: String(user.user_metadata?.name ?? user.email ?? "User"),
+        branchId: user.user_metadata?.branch_id ?? undefined,
+      },
     };
   }
 
-  return null;
+  return { kind: "none" };
+}
+
+/** Load app session from Supabase Auth + profiles table */
+export async function fetchSessionProfile(): Promise<Session | null> {
+  const result = await resolveAuthProfile();
+  return result.kind === "session" ? result.session : null;
 }
 
 /** True when the signed-in auth user has profiles.active = false. */
 export async function isCurrentProfileInactive(): Promise<boolean> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user) return false;
-  const row = await fetchProfileRow(session.user.id);
-  return row?.active === false;
+  const result = await resolveAuthProfile();
+  return result.kind === "inactive";
 }
 
 export async function hasAuthUser(): Promise<boolean> {

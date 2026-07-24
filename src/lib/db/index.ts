@@ -29,7 +29,7 @@ import { isDataUrl, removeStudentPhoto, uploadStudentPhoto, uploadProfilePhoto, 
 import { pauseAuthSync, resumeAuthSync } from "../authSync";
 import { getDbErrorMessage, isMissingBranchIdColumn } from "./errors";
 
-export { fetchSessionProfile, isCurrentProfileInactive } from "../session";
+export { fetchSessionProfile, isCurrentProfileInactive, resolveAuthProfile } from "../session";
 
 export async function signIn(email: string, password: string): Promise<{ ok: true } | { ok: false; message: string }> {
   const { error } = await supabase.auth.signInWithPassword({

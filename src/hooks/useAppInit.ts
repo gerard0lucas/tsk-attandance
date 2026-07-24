@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { isAuthSyncPaused } from "../lib/authSync";
-import { fetchSessionProfile, hasAuthUser, isCurrentProfileInactive } from "../lib/session";
+import { resolveAuthProfile, hasAuthUser } from "../lib/session";
 import { useStore } from "../store/useStore";
 
 const INIT_TIMEOUT_MS = 8000;
@@ -28,14 +28,14 @@ export function useAppInit() {
 
     /** Never wipe session on TOKEN_REFRESHED if profile fetch blips */
     const applyAuthState = async (reloadData: boolean) => {
-      const profile = await fetchSessionProfile();
-      if (profile) {
-        setSession(profile);
+      const resolved = await resolveAuthProfile();
+      if (resolved.kind === "session") {
+        setSession(resolved.session);
         if (reloadData) void loadAllData().catch(() => undefined);
         return;
       }
 
-      if (await isCurrentProfileInactive()) {
+      if (resolved.kind === "inactive") {
         await supabase.auth.signOut();
         setSession(null);
         return;
