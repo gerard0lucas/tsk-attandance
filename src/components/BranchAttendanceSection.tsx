@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import {
   dashboardAttendanceRange,
-  isDateKeyInRange,
   type DashboardAttendancePeriod,
 } from "../lib/reportRanges";
 import { branchListTitle } from "../lib/branch";
+import {
+  countActiveStudentsByBranch,
+  summarizeAttendanceByBranch,
+} from "../lib/db";
 import { Card } from "./ui/Card";
 import { Select } from "./ui/Select";
 
@@ -24,38 +27,58 @@ type BranchAttendanceSectionProps = {
 
 export function BranchAttendanceSection({ reportsPath = "/admin/reports" }: BranchAttendanceSectionProps) {
   const branches = useStore((s) => s.branches);
-  const students = useStore((s) => s.students);
-  const attendance = useStore((s) => s.attendance);
 
   const [period, setPeriod] = useState<DashboardAttendancePeriod>("today");
+  const [branchCounts, setBranchCounts] = useState<Record<string, number>>({});
+  const [attendanceByBranch, setAttendanceByBranch] = useState<
+    Record<string, { checkIns: number; uniquePresent: number }>
+  >({});
+  const [loading, setLoading] = useState(false);
 
   const { from, to, title, subtitle } = useMemo(
     () => dashboardAttendanceRange(period),
     [period],
   );
 
-  const periodRecords = useMemo(
-    () => attendance.filter((r) => isDateKeyInRange(r.date, from, to)),
-    [attendance, from, to],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      try {
+        const [counts, summary] = await Promise.all([
+          countActiveStudentsByBranch(),
+          summarizeAttendanceByBranch(from, to),
+        ]);
+        if (cancelled) return;
+        setBranchCounts(counts);
+        setAttendanceByBranch(summary);
+      } catch {
+        if (!cancelled) {
+          setBranchCounts({});
+          setAttendanceByBranch({});
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to]);
 
   const branchRows = useMemo(
     () =>
       branches.map((branch) => {
-        const studentCount = students.filter(
-          (s) => s.branchId === branch.id && s.active,
-        ).length;
-        const records = periodRecords.filter((r) => r.branchId === branch.id);
-        const uniquePresent = new Set(records.map((r) => r.studentId)).size;
-
+        const studentCount = branchCounts[branch.id] ?? 0;
+        const stats = attendanceByBranch[branch.id];
         return {
           branch,
           studentCount,
-          checkIns: records.length,
-          uniquePresent,
+          checkIns: stats?.checkIns ?? 0,
+          uniquePresent: stats?.uniquePresent ?? 0,
         };
       }),
-    [branches, students, periodRecords],
+    [branches, branchCounts, attendanceByBranch],
   );
 
   const isToday = period === "today";
@@ -65,7 +88,10 @@ export function BranchAttendanceSection({ reportsPath = "/admin/reports" }: Bran
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="font-medium text-cerulean">{title}</h2>
-          <p className="mt-0.5 text-sm text-mist">{subtitle}</p>
+          <p className="mt-0.5 text-sm text-mist">
+            {subtitle}
+            {loading ? " · Loading…" : ""}
+          </p>
         </div>
         <Select
           label="View"

@@ -6,10 +6,12 @@ import { QrScanner, type QrScannerHandle } from "../components/QrScanner";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
-import { formatGender, findStudentByRollNumber } from "../lib/student";
+import { formatGender } from "../lib/student";
 import { validateManualLookup } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
 import { RollNumberInput } from "../components/ui/RollNumberInput";
+import { getAttendanceForStudentDate, getStudentByQr, getStudentByRoll } from "../lib/db";
+import { todayKey } from "../lib/dates";
 import type { Student } from "../types";
 
 function studentAlertHtml(student: Student, branchName?: string, alreadyPresent?: boolean) {
@@ -41,23 +43,17 @@ function studentAlertHtml(student: Student, branchName?: string, alreadyPresent?
 
 export function ScanPage() {
   const session = useStore((s) => s.session);
-  const students = useStore((s) => s.students);
   const getBranch = useStore((s) => s.getBranch);
   const markAttendance = useStore((s) => s.markAttendance);
-  const isPresentToday = useStore((s) => s.isPresentToday);
 
   const scannerRef = useRef<QrScannerHandle>(null);
   const [manualId, setManualId] = useState("");
   const [cooldown, setCooldown] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const { errors, clearField, validate } = useFormValidation<"manualId">();
 
   const isBranchStaff = session?.role === "user" || session?.role === "manager";
-  const branchStudents =
-    isBranchStaff && session?.branchId
-      ? students.filter((s) => s.branchId === session.branchId)
-      : session?.role === "admin"
-        ? students
-        : [];
+  const scopeBranchId = isBranchStaff ? session?.branchId : undefined;
 
   if (isBranchStaff && !session?.branchId) {
     return (
@@ -67,7 +63,7 @@ export function ScanPage() {
     );
   }
 
-  const showStudentAlert = async (student: Student | undefined, invalidMessage?: string) => {
+  const showStudentAlert = async (student: Student | null, invalidMessage?: string) => {
     if (!student) {
       toastError(invalidMessage ?? "Student not found or QR is invalid.", "Invalid QR");
       return;
@@ -83,7 +79,12 @@ export function ScanPage() {
     }
 
     const branchName = getBranch(student.branchId)?.name;
-    const alreadyPresent = isPresentToday(student.id);
+    let alreadyPresent = false;
+    try {
+      alreadyPresent = Boolean(await getAttendanceForStudentDate(student.id, todayKey()));
+    } catch {
+      /* fall through; insert will catch duplicates */
+    }
 
     const result = await Swal.fire({
       title: student.name,
@@ -100,20 +101,37 @@ export function ScanPage() {
 
     if (alreadyPresent || !result.isConfirmed || !session) return;
 
-    const res = await markAttendance(student.id, session.userId);
+    try {
+      const res = await markAttendance(student.id, session.userId, student);
 
-    if (res.ok) {
-      toastSuccess(res.message, "Present!");
-      setCooldown(true);
-      window.setTimeout(() => setCooldown(false), 2000);
-    } else {
-      toastError(res.message, "Could not mark");
+      if (res.ok) {
+        toastSuccess(res.message, "Present!");
+        setCooldown(true);
+        window.setTimeout(() => setCooldown(false), 2000);
+      } else {
+        toastError(res.message, "Could not mark");
+      }
+    } catch (e) {
+      toastError(
+        e instanceof Error ? e.message : "Could not mark attendance.",
+        "Could not mark",
+      );
     }
   };
 
   const handleScan = (sid: string, tok: string) => {
-    const student = branchStudents.find((s) => s.id === sid && s.qrToken === tok);
-    void showStudentAlert(student);
+    if (lookingUp) return;
+    setLookingUp(true);
+    void (async () => {
+      try {
+        const student = await getStudentByQr(sid, tok, scopeBranchId);
+        await showStudentAlert(student);
+      } catch (e) {
+        toastError(e instanceof Error ? e.message : "Lookup failed.", "Could not look up");
+      } finally {
+        setLookingUp(false);
+      }
+    })();
   };
 
   const handleManualLookup = () => {
@@ -126,9 +144,23 @@ export function ScanPage() {
     const q = manualId.trim();
     setManualId("");
     clearField("manualId");
-
-    const student = findStudentByRollNumber(branchStudents, q);
-    void showStudentAlert(student, "No student found with this roll number in your branch.");
+    if (lookingUp) return;
+    setLookingUp(true);
+    void (async () => {
+      try {
+        const student = await getStudentByRoll(q, scopeBranchId);
+        await showStudentAlert(
+          student,
+          scopeBranchId
+            ? "No student found with this roll number in your branch."
+            : "No student found with this roll number.",
+        );
+      } catch (e) {
+        toastError(e instanceof Error ? e.message : "Lookup failed.", "Could not look up");
+      } finally {
+        setLookingUp(false);
+      }
+    })();
   };
 
   return (
@@ -145,7 +177,7 @@ export function ScanPage() {
       <Card className="!p-3 sm:!p-5">
         <QrScanner
           ref={scannerRef}
-          paused={cooldown}
+          paused={cooldown || lookingUp}
           onScan={({ sid, tok }) => handleScan(sid, tok)}
           onInvalidScan={() =>
             toastError("Not a valid student QR from this app.", "Invalid QR")
@@ -170,9 +202,10 @@ export function ScanPage() {
           <Button
             variant="secondary"
             className="w-full shrink-0 sm:w-auto"
+            disabled={lookingUp}
             onClick={handleManualLookup}
           >
-            Find student
+            {lookingUp ? "Looking up…" : "Find student"}
           </Button>
         </div>
       </Card>

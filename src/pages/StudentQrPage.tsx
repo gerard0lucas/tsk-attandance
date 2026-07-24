@@ -1,14 +1,16 @@
+import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { useStore } from "../store/useStore";
+import { getStudentById } from "../lib/db";
 import { QrDisplay } from "../components/QrDisplay";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import type { Student } from "../types";
 
 export function StudentQrPage() {
   const { studentId } = useParams<{ studentId: string }>();
   const location = useLocation();
-  const getStudent = useStore((s) => s.getStudent);
   const getBranch = useStore((s) => s.getBranch);
 
   const studentsPath = location.pathname.startsWith("/admin")
@@ -17,9 +19,44 @@ export function StudentQrPage() {
       ? "/user/students"
       : "/manager/students";
 
-  const student = studentId ? getStudent(studentId) : undefined;
+  const [student, setStudent] = useState<Student | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "missing">("loading");
 
-  if (!studentId || !student) {
+  useEffect(() => {
+    if (!studentId) {
+      setLoadState("missing");
+      return;
+    }
+    let cancelled = false;
+    setLoadState("loading");
+    void (async () => {
+      try {
+        const row = await getStudentById(studentId);
+        if (cancelled) return;
+        if (!row) {
+          setStudent(null);
+          setLoadState("missing");
+          return;
+        }
+        setStudent(row);
+        setLoadState("ready");
+      } catch {
+        if (!cancelled) {
+          setStudent(null);
+          setLoadState("missing");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId]);
+
+  if (loadState === "loading") {
+    return <p className="text-sm text-mist">Loading student…</p>;
+  }
+
+  if (!studentId || loadState === "missing" || !student) {
     return <Navigate to={studentsPath} replace />;
   }
 

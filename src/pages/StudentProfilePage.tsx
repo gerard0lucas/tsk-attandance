@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import { toastError, toastInfo, toastSuccess } from "../lib/toast";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -7,10 +7,23 @@ import { useStore } from "../store/useStore";
 import { canAccessBranch } from "../lib/branchAccess";
 import { formatReportDate } from "../lib/attendanceReport";
 import { todayKey } from "../lib/dates";
-import { parseDateKey } from "../lib/reportRanges";
-import { formatGender, formatMedium, GENDER_OPTIONS, CLASS_OPTIONS, MEDIUM_OPTIONS, normalizeStudentName, parseStudentClass } from "../lib/student";
+import { calendarDaysForMonth, parseDateKey, toDateKey } from "../lib/reportRanges";
+import {
+  formatGender,
+  formatMedium,
+  GENDER_OPTIONS,
+  CLASS_OPTIONS,
+  MEDIUM_OPTIONS,
+  normalizeStudentName,
+  parseStudentClass,
+} from "../lib/student";
 import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
+import {
+  getAttendanceForStudentDate,
+  getStudentById,
+  listAttendanceForStudent,
+} from "../lib/db";
 import { StudentPhoto } from "../components/StudentPhoto";
 import { StudentActionIcons } from "../components/StudentActionIcons";
 import { StudentAttendanceCalendar } from "../components/StudentAttendanceCalendar";
@@ -23,7 +36,7 @@ import { Select } from "../components/ui/Select";
 import { Modal } from "../components/ui/Modal";
 import { FormActions, FormStack } from "../components/ui/FormStack";
 import { PhotoUpload } from "../components/PhotoUpload";
-import type { Gender, Medium } from "../types";
+import type { AttendanceRecord, Gender, Medium, Student } from "../types";
 
 function resolveStudentsBase(pathname: string): string {
   if (pathname.startsWith("/admin")) return "/admin/students";
@@ -36,19 +49,18 @@ export function StudentProfilePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const session = useStore((s) => s.session);
-  const students = useStore((s) => s.students);
-  const attendance = useStore((s) => s.attendance);
-  const getStudent = useStore((s) => s.getStudent);
   const getBranch = useStore((s) => s.getBranch);
   const updateStudent = useStore((s) => s.updateStudent);
   const deleteStudent = useStore((s) => s.deleteStudent);
   const markAttendanceForDate = useStore((s) => s.markAttendanceForDate);
   const deleteAttendance = useStore((s) => s.deleteAttendance);
-  const isPresentToday = useStore((s) => s.isPresentToday);
 
   const studentsBase = resolveStudentsBase(location.pathname);
-  const student = studentId ? getStudent(studentId) : undefined;
 
+  const [student, setStudent] = useState<Student | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "missing">("loading");
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [presentToday, setPresentToday] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
   const [formOpen, setFormOpen] = useState(false);
@@ -65,7 +77,100 @@ export function StudentProfilePage() {
     "name" | "rollNumber" | "studentClass" | "medium" | "phone"
   >();
 
-  if (!studentId || !student) {
+  const monthRange = useMemo(() => {
+    const days = calendarDaysForMonth(visibleMonth);
+    return {
+      from: toDateKey(days[0]!),
+      to: toDateKey(days[days.length - 1]!),
+    };
+  }, [visibleMonth]);
+
+  const reloadStudent = useCallback(async (id: string) => {
+    const row = await getStudentById(id);
+    if (!row) {
+      setStudent(null);
+      setLoadState("missing");
+      return null;
+    }
+    setStudent(row);
+    setLoadState("ready");
+    return row;
+  }, []);
+
+  const reloadAttendance = useCallback(
+    async (id: string, from: string, to: string) => {
+      const [monthRecords, todayRecord] = await Promise.all([
+        listAttendanceForStudent(id, { from, to }),
+        getAttendanceForStudentDate(id, todayKey()),
+      ]);
+      setAttendance(monthRecords);
+      setPresentToday(Boolean(todayRecord));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!studentId) {
+      setLoadState("missing");
+      return;
+    }
+    let cancelled = false;
+    setLoadState("loading");
+    void (async () => {
+      try {
+        const row = await getStudentById(studentId);
+        if (cancelled) return;
+        if (!row) {
+          setStudent(null);
+          setLoadState("missing");
+          return;
+        }
+        setStudent(row);
+        setLoadState("ready");
+      } catch {
+        if (!cancelled) {
+          setStudent(null);
+          setLoadState("missing");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId]);
+
+  useEffect(() => {
+    if (!studentId || loadState !== "ready") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [monthRecords, todayRecord] = await Promise.all([
+          listAttendanceForStudent(studentId, {
+            from: monthRange.from,
+            to: monthRange.to,
+          }),
+          getAttendanceForStudentDate(studentId, todayKey()),
+        ]);
+        if (cancelled) return;
+        setAttendance(monthRecords);
+        setPresentToday(Boolean(todayRecord));
+      } catch {
+        if (!cancelled) {
+          setAttendance([]);
+          setPresentToday(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId, loadState, monthRange.from, monthRange.to]);
+
+  if (loadState === "loading") {
+    return <p className="text-sm text-mist">Loading student…</p>;
+  }
+
+  if (!studentId || loadState === "missing" || !student) {
     return <Navigate to={studentsBase} replace />;
   }
 
@@ -92,7 +197,7 @@ export function StudentProfilePage() {
       !validate(() =>
         validateStudentFields(
           { name, rollNumber, studentClass, medium, phone },
-          { students, excludeStudentId: student.id },
+          { excludeStudentId: student.id },
         ),
       )
     ) {
@@ -112,6 +217,7 @@ export function StudentProfilePage() {
         photo: photo || undefined,
       });
       setFormOpen(false);
+      await reloadStudent(student.id);
     } catch {
       /* actionError */
     }
@@ -151,6 +257,7 @@ export function StudentProfilePage() {
       try {
         await deleteAttendance(record.id);
         toastSuccess("Marked absent.", "Updated");
+        await reloadAttendance(student.id, monthRange.from, monthRange.to);
       } catch {
         toastError("Failed to remove attendance.", "Could not update");
       }
@@ -170,9 +277,10 @@ export function StudentProfilePage() {
     });
     if (!result.isConfirmed) return;
 
-    const res = await markAttendanceForDate(student.id, dateKey, session.userId);
+    const res = await markAttendanceForDate(student.id, dateKey, session.userId, student);
     if (res.ok) {
       toastSuccess(res.message, "Updated");
+      await reloadAttendance(student.id, monthRange.from, monthRange.to);
     } else {
       toastError(res.message, "Could not update");
     }
@@ -249,7 +357,7 @@ export function StudentProfilePage() {
             </p>
             <div className="flex flex-wrap gap-2 pt-1">
               {!student.active && <Badge tone="neutral">Inactive</Badge>}
-              {isPresentToday(student.id) ? (
+              {presentToday ? (
                 <Badge tone="success">Present today</Badge>
               ) : (
                 <Badge tone="neutral">Absent today</Badge>

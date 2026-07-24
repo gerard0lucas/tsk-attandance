@@ -250,6 +250,24 @@ create policy "student_photos_delete"
   on storage.objects for delete to authenticated
   using (bucket_id = 'student-photos');
 
+-- Scale helpers (safe to re-run)
+create or replace function public.count_active_students_by_branch()
+returns table (branch_id uuid, student_count bigint)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select s.branch_id, count(*)::bigint
+  from public.students s
+  where s.active = true
+  group by s.branch_id;
+$$;
+
+grant execute on function public.count_active_students_by_branch() to authenticated;
+
+create index if not exists attendance_date_idx on public.attendance (date);
+
 -- After creating your first admin user in Authentication → Users, run:
 -- insert into public.profiles (id, email, name, role)
 -- values ('YOUR_USER_UUID', 'admin@tsk.org', 'System Administrator', 'admin');

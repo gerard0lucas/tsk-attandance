@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { toastError, toastSuccess } from "../lib/toast";
 import { useStore } from "../store/useStore";
 import { downloadStudentQrPng, downloadStudentsQrZip } from "../lib/qrExport";
-import { findStudentByRollNumber, sortStudentsByRollNumber } from "../lib/student";
+import { sortStudentsByRollNumber } from "../lib/student";
+import { getStudentByRoll, listStudentsByBranch } from "../lib/db";
 import { validateQrDownload } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -13,18 +14,16 @@ import { Select } from "../components/ui/Select";
 import { RollNumberInput } from "../components/ui/RollNumberInput";
 import type { Student, UserRole } from "../types";
 
-type DownloadMode = "individual" | "branch" | "class" | "all";
+type DownloadMode = "individual" | "branch" | "class";
 
 const MODE_OPTIONS: { value: DownloadMode; label: string; hint: string }[] = [
   { value: "individual", label: "Individual", hint: "One student" },
   { value: "branch", label: "Branch", hint: "All students in a branch" },
   { value: "class", label: "Class", hint: "All students in a class" },
-  { value: "all", label: "All", hint: "Every active student in scope" },
 ];
 
 export function DownloadQrPage({ role }: { role: UserRole }) {
   const session = useStore((s) => s.session);
-  const students = useStore((s) => s.students);
   const branches = useStore((s) => s.branches);
   const getBranch = useStore((s) => s.getBranch);
 
@@ -35,70 +34,97 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
   const [mode, setMode] = useState<DownloadMode>("individual");
   const [rollNumber, setRollNumber] = useState("");
   const [branchFilter, setBranchFilter] = useState(
-    () => scopedBranchId ?? branches[0]?.id ?? "all",
+    () => scopedBranchId ?? branches[0]?.id ?? "",
   );
   const [classFilter, setClassFilter] = useState("");
+  const [branchStudents, setBranchStudents] = useState<Student[]>([]);
+  const [matchedIndividualStudent, setMatchedIndividualStudent] = useState<Student | null>(
+    null,
+  );
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const { errors, clearField, clearAll, validate } = useFormValidation<
     "student" | "branch" | "class"
   >();
 
-  const scopedStudents = useMemo(() => {
-    let list = students.filter((s) => s.active);
-    if (scopedBranchId) {
-      list = list.filter((s) => s.branchId === scopedBranchId);
+  useEffect(() => {
+    if (!branchFilter && branches[0]?.id) {
+      setBranchFilter(branches[0].id);
     }
-    return sortStudentsByRollNumber(list);
-  }, [students, scopedBranchId]);
+  }, [branches, branchFilter]);
 
-  const individualSearchList = useMemo(() => {
-    let list = scopedStudents;
-    if (isAdmin && branchFilter !== "all") {
-      list = list.filter((s) => s.branchId === branchFilter);
+  useEffect(() => {
+    if (!branchFilter || (mode !== "branch" && mode !== "class")) {
+      if (mode === "individual") return;
+      setBranchStudents([]);
+      return;
     }
-    return list;
-  }, [scopedStudents, isAdmin, branchFilter]);
+    let cancelled = false;
+    setLoadingStudents(true);
+    void (async () => {
+      try {
+        const rows = await listStudentsByBranch(branchFilter, { activeOnly: true });
+        if (!cancelled) setBranchStudents(sortStudentsByRollNumber(rows));
+      } catch {
+        if (!cancelled) setBranchStudents([]);
+      } finally {
+        if (!cancelled) setLoadingStudents(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchFilter, mode]);
 
-  const matchedIndividualStudent = useMemo(
-    () => findStudentByRollNumber(individualSearchList, rollNumber),
-    [individualSearchList, rollNumber],
-  );
+  useEffect(() => {
+    if (mode !== "individual") {
+      setMatchedIndividualStudent(null);
+      return;
+    }
+    const roll = rollNumber.trim();
+    if (!roll || !branchFilter) {
+      setMatchedIndividualStudent(null);
+      return;
+    }
+    let cancelled = false;
+    setLookingUp(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const student = await getStudentByRoll(roll, branchFilter);
+          if (cancelled) return;
+          setMatchedIndividualStudent(student?.active ? student : null);
+        } catch {
+          if (!cancelled) setMatchedIndividualStudent(null);
+        } finally {
+          if (!cancelled) setLookingUp(false);
+        }
+      })();
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [mode, rollNumber, branchFilter]);
 
   const classOptions = useMemo(() => {
-    const source =
-      mode === "branch" && branchFilter !== "all"
-        ? scopedStudents.filter((s) => s.branchId === branchFilter)
-        : scopedStudents;
-    return [...new Set(source.map((s) => s.class.trim()).filter(Boolean))].sort();
-  }, [scopedStudents, mode, branchFilter]);
+    return [...new Set(branchStudents.map((s) => s.class.trim()).filter(Boolean))].sort();
+  }, [branchStudents]);
 
   const targetStudents = useMemo((): Student[] => {
     if (mode === "individual") {
       return matchedIndividualStudent ? [matchedIndividualStudent] : [];
     }
     if (mode === "branch") {
-      if (branchFilter === "all") return [];
-      return scopedStudents.filter((s) => s.branchId === branchFilter);
+      if (!branchFilter) return [];
+      return branchStudents;
     }
-    if (mode === "class") {
-      if (!classFilter) return [];
-      let list = scopedStudents.filter((s) => s.class === classFilter);
-      if (isAdmin && branchFilter !== "all") {
-        list = list.filter((s) => s.branchId === branchFilter);
-      }
-      return list;
-    }
-    return scopedStudents;
-  }, [
-    mode,
-    matchedIndividualStudent,
-    branchFilter,
-    classFilter,
-    scopedStudents,
-    isAdmin,
-  ]);
+    if (!classFilter) return [];
+    return branchStudents.filter((s) => s.class === classFilter);
+  }, [mode, matchedIndividualStudent, branchFilter, classFilter, branchStudents]);
 
-  const canDownload = targetStudents.length > 0 && !downloading;
+  const canDownload = targetStudents.length > 0 && !downloading && !loadingStudents;
 
   const downloadLabel =
     mode === "individual"
@@ -111,7 +137,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
         validateQrDownload(mode, {
           rollNumber,
           studentFound: Boolean(matchedIndividualStudent),
-          branchFilter,
+          branchFilter: branchFilter || "all",
           classFilter,
         }),
       )
@@ -128,11 +154,11 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
         await downloadStudentQrPng(targetStudents[0], getBranchName(targetStudents[0].branchId));
       } else {
         const branchPart =
-          mode === "branch" && branchFilter !== "all"
+          mode === "branch" && branchFilter
             ? getBranch(branchFilter)?.name?.replace(/[^a-z0-9]+/gi, "-").toLowerCase()
             : mode === "class" && classFilter
               ? `class-${classFilter.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`
-              : "all-students";
+              : "students";
         await downloadStudentsQrZip(
           targetStudents,
           getBranchName,
@@ -161,6 +187,14 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
     );
   }
 
+  if (isAdmin && branches.length === 0) {
+    return (
+      <p className="text-sm text-mist">
+        Add a branch before downloading student QR codes.
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
@@ -170,7 +204,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
 
       <Card>
         <p className="mb-3 text-sm font-medium text-cerulean">Download by</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {MODE_OPTIONS.map(({ value, label, hint }) => (
             <button
               key={value}
@@ -178,6 +212,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
               onClick={() => {
                 setMode(value);
                 setRollNumber("");
+                setClassFilter("");
                 clearAll();
               }}
               className={`rounded-xl border px-3 py-3 text-left transition-colors ${
@@ -204,17 +239,14 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
           <>
             {isAdmin && (
               <Select
-                label="Branch (optional filter)"
+                label="Branch"
                 value={branchFilter}
                 onChange={(e) => {
                   setBranchFilter(e.target.value);
                   setRollNumber("");
                   clearField("student");
                 }}
-                options={[
-                  { value: "all", label: "All branches" },
-                  ...branches.map((b) => ({ value: b.id, label: b.name })),
-                ]}
+                options={branches.map((b) => ({ value: b.id, label: b.name }))}
               />
             )}
             <RollNumberInput
@@ -225,6 +257,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
               }}
               error={errors.student}
             />
+            {lookingUp && <p className="text-sm text-mist">Looking up…</p>}
             {matchedIndividualStudent && (
               <div className="rounded-lg border border-morning bg-white px-4 py-3 text-sm">
                 <p className="font-medium text-cerulean">{matchedIndividualStudent.name}</p>
@@ -265,16 +298,13 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
           <>
             {isAdmin && (
               <Select
-                label="Branch (optional)"
+                label="Branch"
                 value={branchFilter}
                 onChange={(e) => {
                   setBranchFilter(e.target.value);
                   setClassFilter("");
                 }}
-                options={[
-                  { value: "all", label: "All branches" },
-                  ...branches.map((b) => ({ value: b.id, label: b.name })),
-                ]}
+                options={branches.map((b) => ({ value: b.id, label: b.name }))}
               />
             )}
             <Select
@@ -286,23 +316,17 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
               }}
               error={errors.class}
               options={[
-                { value: "", label: "Select a class" },
+                { value: "", label: loadingStudents ? "Loading classes…" : "Select a class" },
                 ...classOptions.map((c) => ({ value: c, label: c })),
               ]}
             />
           </>
         )}
 
-        {mode === "all" && (
-          <p className="text-sm text-mist">
-            {isAdmin
-              ? `Downloads QR codes for all ${scopedStudents.length} active students across every branch.`
-              : `Downloads QR codes for all ${scopedStudents.length} active students in your branch.`}
-          </p>
-        )}
-
         <div className="rounded-lg border border-morning bg-morning/20 px-4 py-3 text-sm text-cerulean">
-          {targetStudents.length === 0 ? (
+          {loadingStudents && mode !== "individual" ? (
+            <span className="text-mist">Loading students…</span>
+          ) : targetStudents.length === 0 ? (
             <span className="text-mist">
               {mode === "individual"
                 ? "Enter a roll number to find the student."

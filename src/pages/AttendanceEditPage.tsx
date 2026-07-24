@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import { toastError, toastSuccess } from "../lib/toast";
@@ -21,6 +21,10 @@ import {
 import { formatTime, todayKey } from "../lib/dates";
 import { formatReportDate } from "../lib/attendanceReport";
 import { compareRollNumber } from "../lib/student";
+import {
+  listAttendanceForBranchDate,
+  listStudentsByBranch,
+} from "../lib/db";
 import type { AttendanceRecord, Student, UserRole } from "../types";
 
 function studentProfilePath(role: UserRole | undefined, studentId: string): string {
@@ -38,8 +42,6 @@ export function AttendanceEditPage() {
   const navigate = useNavigate();
   const session = useStore((s) => s.session);
   const branches = useStore((s) => s.branches);
-  const students = useStore((s) => s.students);
-  const attendance = useStore((s) => s.attendance);
   const getBranch = useStore((s) => s.getBranch);
   const getMarkedByName = useStore((s) => s.getMarkedByName);
   const markAttendanceForDate = useStore((s) => s.markAttendanceForDate);
@@ -51,31 +53,61 @@ export function AttendanceEditPage() {
   );
   const branchId = isAdmin ? selectedBranch : session?.branchId;
   const [filterDate, setFilterDate] = useState(todayKey);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const branchStudents = useMemo(
-    () => (branchId ? students.filter((s) => s.branchId === branchId && s.active) : []),
-    [students, branchId],
-  );
+  const reload = useCallback(async () => {
+    if (!branchId) {
+      setStudents([]);
+      setAttendance([]);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [branchStudents, dayAttendance] = await Promise.all([
+        listStudentsByBranch(branchId, { activeOnly: true }),
+        listAttendanceForBranchDate(branchId, filterDate),
+      ]);
+      setStudents(branchStudents);
+      setAttendance(dayAttendance);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load attendance.");
+      setStudents([]);
+      setAttendance([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [branchId, filterDate]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  useEffect(() => {
+    if (isAdmin && !selectedBranch && branches[0]?.id) {
+      setSelectedBranch(branches[0].id);
+    }
+  }, [isAdmin, selectedBranch, branches]);
 
   const records = useMemo(() => {
-    if (!branchId) return new Map<string, AttendanceRecord>();
     const byStudent = new Map<string, AttendanceRecord>();
     for (const record of attendance) {
-      if (record.branchId === branchId && record.date === filterDate) {
-        byStudent.set(record.studentId, record);
-      }
+      byStudent.set(record.studentId, record);
     }
     return byStudent;
-  }, [attendance, branchId, filterDate]);
+  }, [attendance]);
 
   const studentRows = useMemo<StudentAttendanceRow[]>(() => {
-    return branchStudents
+    return students
       .map((student) => {
         const record = records.get(student.id);
         return { student, record, present: Boolean(record) };
       })
       .sort((a, b) => compareRollNumber(a.student.rollNumber, b.student.rollNumber));
-  }, [branchStudents, records]);
+  }, [students, records]);
 
   const presentCount = studentRows.filter((row) => row.present).length;
   const absentCount = studentRows.length - presentCount;
@@ -86,9 +118,17 @@ export function AttendanceEditPage() {
 
   const markPresent = async (student: Student) => {
     if (!session) return;
-    const res = await markAttendanceForDate(student.id, filterDate, session.userId);
+    const res = await markAttendanceForDate(student.id, filterDate, session.userId, student);
     if (res.ok) {
       toastSuccess(`${student.name} · ${formatReportDate(filterDate)}`, "Marked present");
+      if (res.record) {
+        setAttendance((prev) => [
+          ...prev.filter((a) => !(a.studentId === student.id && a.date === filterDate)),
+          res.record!,
+        ]);
+      } else {
+        void reload();
+      }
     } else {
       toastError(res.message, "Could not mark");
     }
@@ -106,7 +146,8 @@ export function AttendanceEditPage() {
     });
     if (!result.isConfirmed) return;
     try {
-      await deleteAttendance(record.id);
+      await deleteAttendance(record.id, record.branchId);
+      setAttendance((prev) => prev.filter((a) => a.id !== record.id));
       toastSuccess("Attendance updated.", "Marked absent");
     } catch {
       toastError("You can only change attendance for students in your branch.", "Could not remove");
@@ -166,7 +207,9 @@ export function AttendanceEditPage() {
             {absentCount} absent
           </span>
           <span className="text-mist">{dateLabel}</span>
+          {loading && <span className="text-mist">Loading…</span>}
         </div>
+        {loadError && <p className="mt-2 text-sm text-red-600">{loadError}</p>}
       </Card>
 
       <div className="space-y-3 md:hidden">
@@ -228,7 +271,7 @@ export function AttendanceEditPage() {
             </div>
           </CardRow>
         ))}
-        {studentRows.length === 0 && (
+        {!loading && studentRows.length === 0 && (
           <p className="text-sm text-mist">No active students in this branch.</p>
         )}
       </div>
@@ -305,7 +348,7 @@ export function AttendanceEditPage() {
             </tbody>
           </table>
         </TableWrap>
-        {studentRows.length === 0 && (
+        {!loading && studentRows.length === 0 && (
           <p className="text-sm text-mist">No active students in this branch.</p>
         )}
       </Card>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { Button } from "../components/ui/Button";
@@ -14,9 +14,18 @@ import { FormActions, FormStack } from "../components/ui/FormStack";
 import { PhotoUpload } from "../components/PhotoUpload";
 import { StudentPhoto } from "../components/StudentPhoto";
 import { StudentActionIcons } from "../components/StudentActionIcons";
-import { filterStudents, formatGender, formatMedium, GENDER_OPTIONS, CLASS_OPTIONS, MEDIUM_OPTIONS, normalizeStudentName, parseStudentClass, sortStudentsByRollNumber } from "../lib/student";
+import {
+  formatGender,
+  formatMedium,
+  GENDER_OPTIONS,
+  CLASS_OPTIONS,
+  MEDIUM_OPTIONS,
+  normalizeStudentName,
+  parseStudentClass,
+} from "../lib/student";
 import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
+import { usePagedStudents } from "../hooks/usePagedStudents";
 import type { Gender, Medium, Student } from "../types";
 
 type BranchStudentsBasePath = "/manager" | "/user";
@@ -24,15 +33,14 @@ type BranchStudentsBasePath = "/manager" | "/user";
 export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBasePath }) {
   const navigate = useNavigate();
   const session = useStore((s) => s.session);
-  const students = useStore((s) => s.students);
   const getBranch = useStore((s) => s.getBranch);
   const addStudent = useStore((s) => s.addStudent);
   const updateStudent = useStore((s) => s.updateStudent);
   const deleteStudent = useStore((s) => s.deleteStudent);
-  const isPresentToday = useStore((s) => s.isPresentToday);
 
   const branchId = session?.branchId ?? "";
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
   const [name, setName] = useState("");
@@ -48,16 +56,12 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     "name" | "rollNumber" | "studentClass" | "medium" | "phone"
   >();
 
-  const branchList = useMemo(
-    () =>
-      sortStudentsByRollNumber(branchId ? students.filter((s) => s.branchId === branchId) : []),
-    [students, branchId],
-  );
+  useEffect(() => {
+    setPage(1);
+  }, [search, branchId]);
 
-  const branchStudents = useMemo(
-    () => filterStudents(branchList, search),
-    [branchList, search],
-  );
+  const { students, total, totalPages, loading, error, presentTodayIds, reload } =
+    usePagedStudents({ branchId, search, page });
 
   const openQr = (studentId: string) => {
     navigate(`${basePath}/students/${studentId}/qr`);
@@ -65,7 +69,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
 
   const remove = (s: Student) => {
     if (confirm(`Delete ${s.name}? This cannot be undone.`)) {
-      void deleteStudent(s.id);
+      void deleteStudent(s.id).then(() => reload());
     }
   };
 
@@ -113,7 +117,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
       !validate(() =>
         validateStudentFields(
           { name, rollNumber, studentClass, medium, phone, branchId },
-          { students, excludeStudentId: editing?.id },
+          { excludeStudentId: editing?.id },
         ),
       )
     ) {
@@ -134,6 +138,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           photo: photo || undefined,
         });
         closeForm();
+        reload();
       } else {
         const student = await addStudent({
           branchId,
@@ -167,7 +172,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
         title="Students"
-        subtitle={getBranch(branchId)?.name}
+        subtitle={`${getBranch(branchId)?.name ?? "Branch"}${total ? ` · ${total} students` : ""}`}
         action={
           <Button onClick={openAdd} disabled={!branchId}>
             Add student
@@ -175,10 +180,17 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
         }
       />
 
-      <StudentSearchField value={search} onChange={setSearch} students={branchList} />
+      <StudentSearchField
+        value={search}
+        onChange={setSearch}
+        branchId={branchId}
+      />
+
+      {loading && <p className="text-sm text-mist">Loading…</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="space-y-3">
-        {branchStudents.map((s) => (
+        {students.map((s) => (
           <CardRow
             key={s.id}
             actions={
@@ -206,7 +218,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
                 <p className="text-sm text-mist">Gender: {formatGender(s.gender)}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {!s.active && <Badge tone="neutral">Inactive</Badge>}
-                  {isPresentToday(s.id) ? (
+                  {presentTodayIds.has(s.id) ? (
                     <Badge tone="success">Present today</Badge>
                   ) : (
                     <Badge tone="neutral">Not checked in</Badge>
@@ -216,12 +228,36 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
             </div>
           </CardRow>
         ))}
-        {branchStudents.length === 0 && (
+        {!loading && students.length === 0 && (
           <p className="text-sm text-mist">
             {search ? "No students match your search." : "No students in your branch yet."}
           </p>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-mist">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages || loading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      )}
 
       <Modal
         open={formOpen}

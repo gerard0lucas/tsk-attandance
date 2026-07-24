@@ -44,34 +44,320 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
 }
 
-export async function fetchAllData(): Promise<{
+/** Supabase caps each response at 1000 rows by default — page through all. */
+const PAGE_SIZE = 1000;
+
+async function fetchAllPages<T>(
+  fetchPage: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return all;
+}
+
+/** Bootstrap only — never loads students or attendance (scale-safe). */
+export async function fetchBootstrapData(): Promise<{
   branches: Branch[];
   managers: Manager[];
   users: BranchUser[];
-  students: Student[];
-  attendance: AttendanceRecord[];
+  markerNames: Record<string, string>;
 }> {
-  const [branchesRes, managersRes, usersRes, studentsRes, attendanceRes] = await Promise.all([
-    supabase.from("branches").select("*").order("created_at"),
-    supabase.from("profiles").select("*").eq("role", "manager").order("created_at"),
-    supabase.from("profiles").select("*").eq("role", "user").order("created_at"),
-    supabase.from("students").select("*").order("created_at"),
-    supabase.from("attendance").select("*").order("marked_at"),
+  const [branches, managers, users, adminNames] = await Promise.all([
+    fetchAllPages<BranchRow>((from, to) =>
+      supabase.from("branches").select("*").order("created_at").range(from, to),
+    ),
+    fetchAllPages<ProfileRow>((from, to) =>
+      supabase.from("profiles").select("*").eq("role", "manager").order("created_at").range(from, to),
+    ),
+    fetchAllPages<ProfileRow>((from, to) =>
+      supabase.from("profiles").select("*").eq("role", "user").order("created_at").range(from, to),
+    ),
+    fetchAllPages<{ id: string; name: string }>((from, to) =>
+      supabase.from("profiles").select("id, name").eq("role", "admin").range(from, to),
+    ),
   ]);
 
-  if (branchesRes.error) throw branchesRes.error;
-  if (managersRes.error) throw managersRes.error;
-  if (usersRes.error) throw usersRes.error;
-  if (studentsRes.error) throw studentsRes.error;
-  if (attendanceRes.error) throw attendanceRes.error;
+  const markerNames: Record<string, string> = {};
+  for (const p of managers) markerNames[p.id] = p.name;
+  for (const p of users) markerNames[p.id] = p.name;
+  for (const p of adminNames) markerNames[p.id] = p.name;
 
   return {
-    branches: (branchesRes.data as BranchRow[]).map(toBranch),
-    managers: (managersRes.data as ProfileRow[]).map(toManager),
-    users: (usersRes.data as ProfileRow[]).map(toBranchUser),
-    students: (studentsRes.data as StudentRow[]).map(toStudent),
-    attendance: (attendanceRes.data as AttendanceRow[]).map(toAttendance),
+    branches: branches.map(toBranch),
+    managers: managers.map(toManager),
+    users: users.map(toBranchUser),
+    markerNames,
   };
+}
+
+export async function getStudentById(id: string): Promise<Student | null> {
+  const { data, error } = await supabase.from("students").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? toStudent(data as StudentRow) : null;
+}
+
+export async function getStudentByQr(
+  studentId: string,
+  qrToken: string,
+  branchId?: string,
+): Promise<Student | null> {
+  let q = supabase
+    .from("students")
+    .select("*")
+    .eq("id", studentId)
+    .eq("qr_token", qrToken);
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  return data ? toStudent(data as StudentRow) : null;
+}
+
+export async function getStudentByRoll(
+  rollNumber: string,
+  branchId?: string,
+): Promise<Student | null> {
+  const roll = sanitizeRollNumber(rollNumber);
+  if (!roll) return null;
+  let q = supabase.from("students").select("*").eq("roll_number", roll);
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw error;
+  return data ? toStudent(data as StudentRow) : null;
+}
+
+export type ListStudentsParams = {
+  branchId?: string;
+  activeOnly?: boolean;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export async function listStudents(
+  params: ListStudentsParams = {},
+): Promise<{ students: Student[]; total: number }> {
+  const page = Math.max(1, params.page ?? 1);
+  const pageSize = Math.min(200, Math.max(1, params.pageSize ?? 50));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let q = supabase
+    .from("students")
+    .select("*", { count: "exact" })
+    .order("roll_number");
+
+  if (params.branchId) q = q.eq("branch_id", params.branchId);
+  if (params.activeOnly) q = q.eq("active", true);
+
+  const search = params.search?.trim();
+  if (search) {
+    const digits = sanitizeRollNumber(search);
+    if (digits && /^\d+$/.test(search.trim())) {
+      q = q.eq("roll_number", digits);
+    } else {
+      const safe = search.replace(/[%_,.()"'\\]/g, "").trim();
+      if (safe) {
+        const pattern = `%${safe}%`;
+        q = q.or(
+          `name.ilike."${pattern}",school_name.ilike."${pattern}",phone.ilike."${pattern}",class.ilike."${pattern}"`,
+        );
+      }
+    }
+  }
+
+  const { data, error, count } = await q.range(from, to);
+  if (error) throw error;
+  return {
+    students: ((data ?? []) as StudentRow[]).map(toStudent),
+    total: count ?? 0,
+  };
+}
+
+/** All students in a branch (paged server-side). Safe when branches stay under a few thousand. */
+export async function listStudentsByBranch(
+  branchId: string,
+  opts?: { activeOnly?: boolean },
+): Promise<Student[]> {
+  const rows = await fetchAllPages<StudentRow>((from, to) => {
+    let q = supabase
+      .from("students")
+      .select("*")
+      .eq("branch_id", branchId)
+      .order("roll_number")
+      .range(from, to);
+    if (opts?.activeOnly !== false) q = q.eq("active", true);
+    return q;
+  });
+  return rows.map(toStudent);
+}
+
+export async function listAttendanceForBranchDate(
+  branchId: string,
+  date: string,
+): Promise<AttendanceRecord[]> {
+  const rows = await fetchAllPages<AttendanceRow>((from, to) =>
+    supabase
+      .from("attendance")
+      .select("*")
+      .eq("branch_id", branchId)
+      .eq("date", date)
+      .order("marked_at")
+      .range(from, to),
+  );
+  return rows.map(toAttendance);
+}
+
+export async function listAttendanceInRange(params: {
+  from: string;
+  to: string;
+  branchId?: string;
+}): Promise<AttendanceRecord[]> {
+  const rows = await fetchAllPages<AttendanceRow>((from, to) => {
+    let q = supabase
+      .from("attendance")
+      .select("*")
+      .gte("date", params.from)
+      .lte("date", params.to)
+      .order("date")
+      .order("marked_at")
+      .range(from, to);
+    if (params.branchId) q = q.eq("branch_id", params.branchId);
+    return q;
+  });
+  return rows.map(toAttendance);
+}
+
+export async function listAttendanceForStudent(
+  studentId: string,
+  opts?: { from?: string; to?: string },
+): Promise<AttendanceRecord[]> {
+  const rows = await fetchAllPages<AttendanceRow>((from, to) => {
+    let q = supabase
+      .from("attendance")
+      .select("*")
+      .eq("student_id", studentId)
+      .order("date")
+      .range(from, to);
+    if (opts?.from) q = q.gte("date", opts.from);
+    if (opts?.to) q = q.lte("date", opts.to);
+    return q;
+  });
+  return rows.map(toAttendance);
+}
+
+export async function getAttendanceForStudentDate(
+  studentId: string,
+  date: string,
+): Promise<AttendanceRecord | null> {
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("*")
+    .eq("student_id", studentId)
+    .eq("date", date)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? toAttendance(data as AttendanceRow) : null;
+}
+
+export async function countActiveStudents(branchId?: string): Promise<number> {
+  let q = supabase
+    .from("students")
+    .select("id", { count: "exact", head: true })
+    .eq("active", true);
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function countPresentForDate(
+  date: string,
+  branchId?: string,
+): Promise<number> {
+  let q = supabase
+    .from("attendance")
+    .select("id", { count: "exact", head: true })
+    .eq("date", date);
+  if (branchId) q = q.eq("branch_id", branchId);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Per-branch active student counts (for admin dashboards). */
+export async function countActiveStudentsByBranch(): Promise<Record<string, number>> {
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "count_active_students_by_branch",
+  );
+  if (!rpcError && Array.isArray(rpcData)) {
+    const counts: Record<string, number> = {};
+    for (const row of rpcData as { branch_id: string; student_count: number | string }[]) {
+      counts[row.branch_id] = Number(row.student_count);
+    }
+    return counts;
+  }
+
+  // Fallback when RPC is not installed yet
+  const rows = await fetchAllPages<{ branch_id: string }>((from, to) =>
+    supabase
+      .from("students")
+      .select("branch_id")
+      .eq("active", true)
+      .range(from, to),
+  );
+  const counts: Record<string, number> = {};
+  for (const r of rows) {
+    counts[r.branch_id] = (counts[r.branch_id] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** Unique present student counts per branch for a date range. */
+export async function summarizeAttendanceByBranch(
+  from: string,
+  to: string,
+): Promise<Record<string, { checkIns: number; uniquePresent: number }>> {
+  const records = await listAttendanceInRange({ from, to });
+  const byBranch = new Map<string, { checkIns: number; ids: Set<string> }>();
+  for (const r of records) {
+    let entry = byBranch.get(r.branchId);
+    if (!entry) {
+      entry = { checkIns: 0, ids: new Set() };
+      byBranch.set(r.branchId, entry);
+    }
+    entry.checkIns += 1;
+    entry.ids.add(r.studentId);
+  }
+  const out: Record<string, { checkIns: number; uniquePresent: number }> = {};
+  for (const [branchId, entry] of byBranch) {
+    out[branchId] = { checkIns: entry.checkIns, uniquePresent: entry.ids.size };
+  }
+  return out;
+}
+
+export async function getStudentsByIds(ids: string[]): Promise<Student[]> {
+  if (ids.length === 0) return [];
+  const unique = [...new Set(ids)];
+  const chunkSize = 200;
+  const all: Student[] = [];
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data, error } = await supabase.from("students").select("*").in("id", chunk);
+    if (error) throw error;
+    all.push(...((data ?? []) as StudentRow[]).map(toStudent));
+  }
+  return all;
 }
 
 export async function insertBranch(data: BranchInput): Promise<Branch> {
@@ -504,10 +790,11 @@ export async function markAttendanceForDate(data: {
   markedById: string;
   date: string;
 }): Promise<AttendanceRecord> {
-  await supabase
+  const { error } = await supabase
     .from("attendance")
     .delete()
     .eq("student_id", data.studentId)
     .eq("date", data.date);
+  if (error) throw error;
   return insertAttendance(data);
 }

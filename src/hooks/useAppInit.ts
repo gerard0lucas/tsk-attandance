@@ -77,8 +77,8 @@ export function useAppInit() {
           useStore.setState({
             branches: [],
             managers: [],
-            students: [],
-            attendance: [],
+            users: [],
+            markerNames: {},
             dataLoading: false,
           });
           return;

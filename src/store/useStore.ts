@@ -10,7 +10,6 @@ import type {
 } from "../types";
 import { branchAccessError } from "../lib/branchAccess";
 import { todayKey } from "../lib/dates";
-import { sortStudentsByRollNumber } from "../lib/student";
 import { isSupabaseConfigured } from "../lib/supabase";
 import * as db from "../lib/db";
 
@@ -22,8 +21,7 @@ interface AppState {
   branches: Branch[];
   managers: Manager[];
   users: BranchUser[];
-  students: Student[];
-  attendance: AttendanceRecord[];
+  markerNames: Record<string, string>;
   session: Session | null;
 
   setReady: (ready: boolean) => void;
@@ -114,7 +112,11 @@ interface AppState {
   ) => Promise<Student>;
   deleteStudent: (id: string) => Promise<void>;
 
-  markAttendance: (studentId: string, markedById: string) => Promise<{
+  markAttendance: (
+    studentId: string,
+    markedById: string,
+    studentHint?: Student,
+  ) => Promise<{
     ok: boolean;
     message: string;
     record?: AttendanceRecord;
@@ -123,18 +125,14 @@ interface AppState {
     studentId: string,
     date: string,
     markedById: string,
-  ) => Promise<{ ok: boolean; message: string }>;
-  deleteAttendance: (id: string) => Promise<void>;
+    studentHint?: Student,
+  ) => Promise<{ ok: boolean; message: string; record?: AttendanceRecord }>;
+  deleteAttendance: (id: string, branchId?: string) => Promise<void>;
 
   getBranch: (id: string) => Branch | undefined;
   getManager: (id: string) => Manager | undefined;
   getBranchUser: (id: string) => BranchUser | undefined;
   getMarkedByName: (id: string) => string;
-  getStudent: (id: string) => Student | undefined;
-  getStudentsByBranch: (branchId: string) => Student[];
-  getAttendanceForDate: (branchId: string, date: string) => AttendanceRecord[];
-  isPresentToday: (studentId: string) => boolean;
-  isPresentOnDate: (studentId: string, date: string) => boolean;
 }
 
 function requireSupabase(): void {
@@ -173,8 +171,7 @@ export const useStore = create<AppState>()((set, get) => ({
   branches: [],
   managers: [],
   users: [],
-  students: [],
-  attendance: [],
+  markerNames: {},
   session: null,
 
   setReady: (ready) => set({ ready }),
@@ -185,10 +182,9 @@ export const useStore = create<AppState>()((set, get) => ({
     requireSupabase();
     set({ dataLoading: true });
     try {
-      const data = await db.fetchAllData();
+      const data = await db.fetchBootstrapData();
       set({
         ...data,
-        students: sortStudentsByRollNumber(data.students),
         dataLoading: false,
         actionError: null,
       });
@@ -246,8 +242,7 @@ export const useStore = create<AppState>()((set, get) => ({
       branches: [],
       managers: [],
       users: [],
-      students: [],
-      attendance: [],
+      markerNames: {},
     });
   },
 
@@ -271,8 +266,6 @@ export const useStore = create<AppState>()((set, get) => ({
       await db.removeBranch(id);
       set((s) => ({
         branches: s.branches.filter((b) => b.id !== id),
-        students: s.students.filter((st) => st.branchId !== id),
-        attendance: s.attendance.filter((a) => a.branchId !== id),
       }));
     }),
 
@@ -282,6 +275,7 @@ export const useStore = create<AppState>()((set, get) => ({
       const adminSession = await db.fetchAdminSessionAfterManagerCreate();
       set((s) => ({
         managers: [...s.managers, manager],
+        markerNames: { ...s.markerNames, [manager.id]: manager.name },
         session: adminSession ?? s.session,
       }));
       return manager;
@@ -300,6 +294,10 @@ export const useStore = create<AppState>()((set, get) => ({
               }
             : m,
         ),
+        markerNames:
+          data.name !== undefined
+            ? { ...s.markerNames, [id]: data.name }
+            : s.markerNames,
       }));
       return result;
     }),
@@ -307,13 +305,19 @@ export const useStore = create<AppState>()((set, get) => ({
   deleteManager: (id) =>
     runAction(async () => {
       await db.removeManager(id);
-      set((s) => ({ managers: s.managers.filter((m) => m.id !== id) }));
+      set((s) => {
+        const { [id]: _removed, ...markerNames } = s.markerNames;
+        return { managers: s.managers.filter((m) => m.id !== id), markerNames };
+      });
     }),
 
   addBranchUser: (data) =>
     runAction(async () => {
       const user = await db.createBranchUserAccount(data);
-      set((s) => ({ users: [...s.users, user] }));
+      set((s) => ({
+        users: [...s.users, user],
+        markerNames: { ...s.markerNames, [user.id]: user.name },
+      }));
       return user;
     }),
 
@@ -322,13 +326,20 @@ export const useStore = create<AppState>()((set, get) => ({
       await db.patchBranchUser(id, data);
       set((s) => ({
         users: s.users.map((u) => (u.id === id ? { ...u, ...data } : u)),
+        markerNames:
+          data.name !== undefined
+            ? { ...s.markerNames, [id]: data.name }
+            : s.markerNames,
       }));
     }),
 
   deleteBranchUser: (id) =>
     runAction(async () => {
       await db.removeBranchUser(id);
-      set((s) => ({ users: s.users.filter((u) => u.id !== id) }));
+      set((s) => {
+        const { [id]: _removed, ...markerNames } = s.markerNames;
+        return { users: s.users.filter((u) => u.id !== id), markerNames };
+      });
     }),
 
   addStudent: (data) =>
@@ -336,51 +347,38 @@ export const useStore = create<AppState>()((set, get) => ({
       const session = get().session;
       const branchErr = branchAccessError(session, data.branchId);
       if (branchErr) throw new Error(branchErr);
-
-      const student = await db.insertStudent(data);
-      set((s) => ({ students: sortStudentsByRollNumber([...s.students, student]) }));
-      return student;
+      return db.insertStudent(data);
     }),
 
   updateStudent: (id, data) =>
     runAction(async () => {
       const session = get().session;
-      const existing = get().students.find((s) => s.id === id);
+      const existing = await db.getStudentById(id);
       if (!existing) throw new Error("Student not found.");
 
       const targetBranch = data.branchId ?? existing.branchId;
       const branchErr = branchAccessError(session, targetBranch);
       if (branchErr) throw new Error(branchErr);
 
-      const student = await db.patchStudent(id, data);
-      set((s) => ({
-        students: sortStudentsByRollNumber(
-          s.students.map((st) => (st.id === id ? student : st)),
-        ),
-      }));
-      return student;
+      return db.patchStudent(id, data);
     }),
 
   deleteStudent: (id) =>
     runAction(async () => {
       const session = get().session;
-      const student = get().students.find((s) => s.id === id);
+      const student = await db.getStudentById(id);
       if (!student) throw new Error("Student not found.");
 
       const branchErr = branchAccessError(session, student.branchId);
       if (branchErr) throw new Error(branchErr);
 
       await db.removeStudent(id);
-      set((s) => ({
-        students: s.students.filter((st) => st.id !== id),
-        attendance: s.attendance.filter((a) => a.studentId !== id),
-      }));
     }),
 
-  markAttendance: (studentId, markedById) =>
+  markAttendance: (studentId, markedById, studentHint) =>
     runAction(async () => {
       const session = get().session;
-      const student = get().students.find((s) => s.id === studentId);
+      const student = studentHint ?? (await db.getStudentById(studentId));
       if (!student) return { ok: false, message: "Student not found." };
       if (!student.active) return { ok: false, message: "Student account is inactive." };
 
@@ -388,9 +386,7 @@ export const useStore = create<AppState>()((set, get) => ({
       if (branchErr) return { ok: false, message: branchErr };
 
       const date = todayKey();
-      const existing = get().attendance.find(
-        (a) => a.studentId === studentId && a.date === date,
-      );
+      const existing = await db.getAttendanceForStudentDate(studentId, date);
       if (existing) {
         return { ok: false, message: "Already marked present today." };
       }
@@ -402,7 +398,6 @@ export const useStore = create<AppState>()((set, get) => ({
           markedById,
           date,
         });
-        set((s) => ({ attendance: [...s.attendance, record] }));
         return { ok: true, message: `${student.name} marked present.`, record };
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Could not mark attendance.";
@@ -413,65 +408,55 @@ export const useStore = create<AppState>()((set, get) => ({
       }
     }),
 
-  markAttendanceForDate: (studentId, date, markedById) =>
+  markAttendanceForDate: (studentId, date, markedById, studentHint) =>
     runAction(async () => {
       const session = get().session;
-      const student = get().students.find((s) => s.id === studentId);
+      const student = studentHint ?? (await db.getStudentById(studentId));
       if (!student) return { ok: false, message: "Student not found." };
       if (!student.active) return { ok: false, message: "Student is inactive." };
 
       const branchErr = branchAccessError(session, student.branchId);
       if (branchErr) return { ok: false, message: branchErr };
 
-      const record = await db.markAttendanceForDate({
-        studentId,
-        branchId: student.branchId,
-        markedById,
-        date,
-      });
-      set((s) => ({
-        attendance: [
-          ...s.attendance.filter((a) => !(a.studentId === studentId && a.date === date)),
-          record,
-        ],
-      }));
-      return { ok: true, message: `${student.name} marked for ${date}.` };
+      try {
+        const record = await db.markAttendanceForDate({
+          studentId,
+          branchId: student.branchId,
+          markedById,
+          date,
+        });
+        return { ok: true, message: `${student.name} marked for ${date}.`, record };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Could not mark attendance.";
+        if (msg.includes("duplicate") || msg.includes("unique")) {
+          return { ok: false, message: "Already marked present for this date." };
+        }
+        return { ok: false, message: msg };
+      }
     }),
 
-  deleteAttendance: (id) =>
+  deleteAttendance: (id, branchId) =>
     runAction(async () => {
       const session = get().session;
-      const record = get().attendance.find((a) => a.id === id);
-      if (!record) throw new Error("Attendance record not found.");
-
-      const branchErr = branchAccessError(session, record.branchId);
-      if (branchErr) throw new Error(branchErr);
-
+      if (branchId) {
+        const branchErr = branchAccessError(session, branchId);
+        if (branchErr) throw new Error(branchErr);
+      }
       await db.removeAttendance(id);
-      set((s) => ({
-        attendance: s.attendance.filter((a) => a.id !== id),
-      }));
     }),
 
   getBranch: (id) => get().branches.find((b) => b.id === id),
   getManager: (id) => get().managers.find((m) => m.id === id),
   getBranchUser: (id) => get().users.find((u) => u.id === id),
   getMarkedByName: (id) => {
+    const named = get().markerNames[id];
+    if (named) return named;
     const m = get().getManager(id);
     if (m) return m.name;
     const u = get().getBranchUser(id);
     if (u) return u.name;
+    const session = get().session;
+    if (session?.userId === id) return session.name;
     return "—";
   },
-  getStudent: (id) => get().students.find((s) => s.id === id),
-  getStudentsByBranch: (branchId) =>
-    sortStudentsByRollNumber(get().students.filter((s) => s.branchId === branchId)),
-  getAttendanceForDate: (branchId, date) =>
-    get().attendance.filter((a) => a.branchId === branchId && a.date === date),
-  isPresentToday: (studentId) => {
-    const date = todayKey();
-    return get().attendance.some((a) => a.studentId === studentId && a.date === date);
-  },
-  isPresentOnDate: (studentId, date) =>
-    get().attendance.some((a) => a.studentId === studentId && a.date === date),
 }));

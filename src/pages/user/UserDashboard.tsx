@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { StatCard } from "../../components/StatCard";
@@ -5,22 +6,60 @@ import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { todayKey, formatTime } from "../../lib/dates";
+import {
+  countActiveStudents,
+  getStudentsByIds,
+  listAttendanceForBranchDate,
+} from "../../lib/db";
+import type { AttendanceRecord, Student } from "../../types";
 
 export function UserDashboard() {
   const session = useStore((s) => s.session);
-  const getStudent = useStore((s) => s.getStudent);
   const getBranch = useStore((s) => s.getBranch);
-  const students = useStore((s) => s.students);
-  const attendance = useStore((s) => s.attendance);
 
   const branchId = session?.branchId;
   const today = todayKey();
-  const branchStudents = branchId
-    ? students.filter((s) => s.branchId === branchId && s.active)
-    : [];
-  const todayAttendance = attendance.filter(
-    (a) => a.branchId === branchId && a.date === today,
-  );
+  const [studentCount, setStudentCount] = useState(0);
+  const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord[]>([]);
+  const [studentById, setStudentById] = useState<Record<string, Student>>({});
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!branchId) {
+      setStudentCount(0);
+      setTodayAttendance([]);
+      setStudentById({});
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      try {
+        const [count, dayAttendance] = await Promise.all([
+          countActiveStudents(branchId),
+          listAttendanceForBranchDate(branchId, today),
+        ]);
+        if (cancelled) return;
+        setStudentCount(count);
+        setTodayAttendance(dayAttendance);
+        const students = await getStudentsByIds(dayAttendance.map((r) => r.studentId));
+        if (cancelled) return;
+        const map: Record<string, Student> = {};
+        for (const s of students) map[s.id] = s;
+        setStudentById(map);
+      } catch {
+        if (!cancelled) {
+          setStudentCount(0);
+          setTodayAttendance([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId, today]);
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -42,9 +81,11 @@ export function UserDashboard() {
       />
 
       <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 sm:gap-4">
-        <StatCard label="Students" value={branchStudents.length} />
+        <StatCard label="Students" value={studentCount} />
         <StatCard label="Present today" value={todayAttendance.length} />
       </div>
+
+      {loading && <p className="text-sm text-mist">Loading…</p>}
 
       <Card>
         <h2 className="mb-3 font-medium text-cerulean">Checked in today</h2>
@@ -58,7 +99,7 @@ export function UserDashboard() {
                 className="flex flex-col gap-0.5 border-b border-morning py-2 last:border-0 sm:flex-row sm:justify-between"
               >
                 <span className="font-medium text-cerulean">
-                  {getStudent(r.studentId)?.name}
+                  {studentById[r.studentId]?.name ?? "—"}
                 </span>
                 <span className="text-mist">{formatTime(r.markedAt)}</span>
               </li>

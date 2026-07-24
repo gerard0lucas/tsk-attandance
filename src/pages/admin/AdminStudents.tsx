@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { Card, CardRow } from "../../components/ui/Card";
@@ -22,22 +22,31 @@ import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
 import { StudentActionIcons } from "../../components/StudentActionIcons";
 import { StudentDetailsModal } from "../../components/StudentDetailsModal";
-import { filterStudents, formatGender, formatMedium, GENDER_OPTIONS, CLASS_OPTIONS, MEDIUM_OPTIONS, normalizeStudentName, parseStudentClass, sortStudentsByRollNumber } from "../../lib/student";
+import {
+  formatGender,
+  formatMedium,
+  GENDER_OPTIONS,
+  CLASS_OPTIONS,
+  MEDIUM_OPTIONS,
+  normalizeStudentName,
+  parseStudentClass,
+} from "../../lib/student";
 import { validateStudentFields, sanitizeRollNumber } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
+import { usePagedStudents } from "../../hooks/usePagedStudents";
 import type { Gender, Medium, Student } from "../../types";
 
 export function AdminStudents() {
   const navigate = useNavigate();
-  const students = useStore((s) => s.students);
   const branches = useStore((s) => s.branches);
   const getBranch = useStore((s) => s.getBranch);
   const addStudent = useStore((s) => s.addStudent);
   const updateStudent = useStore((s) => s.updateStudent);
   const deleteStudent = useStore((s) => s.deleteStudent);
-  const isPresentToday = useStore((s) => s.isPresentToday);
-  const [filterBranch, setFilterBranch] = useState("all");
+
+  const [filterBranch, setFilterBranch] = useState(() => branches[0]?.id ?? "");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [viewing, setViewing] = useState<Student | null>(null);
   const [editing, setEditing] = useState<Student | null>(null);
@@ -55,18 +64,23 @@ export function AdminStudents() {
     "name" | "rollNumber" | "studentClass" | "medium" | "phone" | "branchId"
   >();
 
-  const branchFiltered = useMemo(
-    () =>
-      sortStudentsByRollNumber(
-        filterBranch === "all" ? students : students.filter((s) => s.branchId === filterBranch),
-      ),
-    [students, filterBranch],
-  );
+  useEffect(() => {
+    if (!filterBranch && branches[0]?.id) {
+      setFilterBranch(branches[0].id);
+    }
+  }, [branches, filterBranch]);
 
-  const filtered = useMemo(
-    () => filterStudents(branchFiltered, search),
-    [branchFiltered, search],
-  );
+  useEffect(() => {
+    setPage(1);
+  }, [search, filterBranch]);
+
+  const { students, total, totalPages, loading, error, presentTodayIds, reload } =
+    usePagedStudents({
+      branchId: filterBranch || undefined,
+      search,
+      page,
+      enabled: Boolean(filterBranch),
+    });
 
   const openQr = (studentId: string) => {
     navigate(`/admin/students/${studentId}/qr`);
@@ -81,7 +95,7 @@ export function AdminStudents() {
     setSchoolName("");
     setPhone("");
     setAddress("");
-    setBranchId(branches[0]?.id ?? "");
+    setBranchId(filterBranch || branches[0]?.id || "");
     setPhoto(undefined);
     setEditing(null);
     clearAll();
@@ -126,7 +140,7 @@ export function AdminStudents() {
       !validate(() =>
         validateStudentFields(
           { name, rollNumber, studentClass, medium, phone, branchId },
-          { students, excludeStudentId: editing?.id },
+          { excludeStudentId: editing?.id },
         ),
       )
     ) {
@@ -147,6 +161,7 @@ export function AdminStudents() {
           photo: photo || undefined,
         });
         closeForm();
+        reload();
       } else {
         const student = await addStudent({
           branchId,
@@ -161,6 +176,7 @@ export function AdminStudents() {
           photo,
         });
         closeForm();
+        reload();
         navigate(`/admin/students/${student.id}/qr`);
       }
     } catch {
@@ -170,7 +186,7 @@ export function AdminStudents() {
 
   const remove = (s: Student) => {
     if (confirm(`Delete ${s.name}? This cannot be undone.`)) {
-      void deleteStudent(s.id);
+      void deleteStudent(s.id).then(() => reload());
     }
   };
 
@@ -178,6 +194,11 @@ export function AdminStudents() {
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
         title="Students"
+        subtitle={
+          filterBranch
+            ? `${getBranch(filterBranch)?.name ?? "Branch"}${total ? ` · ${total} students` : ""}`
+            : undefined
+        }
         action={
           branches.length > 0 ? (
             <Button onClick={openAdd}>Add student</Button>
@@ -189,36 +210,38 @@ export function AdminStudents() {
         }
       />
 
-      <Select
-        label="Filter by branch"
-        value={filterBranch}
-        onChange={(e) => setFilterBranch(e.target.value)}
-        options={[
-          { value: "all", label: "All branches" },
-          ...branches.map((b) => ({ value: b.id, label: b.name })),
-        ]}
-      />
+      {branches.length > 0 && (
+        <Select
+          label="Filter by branch"
+          value={filterBranch}
+          onChange={(e) => setFilterBranch(e.target.value)}
+          options={branches.map((b) => ({ value: b.id, label: b.name }))}
+        />
+      )}
 
       <StudentSearchField
         value={search}
         onChange={setSearch}
-        students={branchFiltered}
+        branchId={filterBranch || undefined}
       />
 
+      {loading && <p className="text-sm text-mist">Loading…</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
       <div className="space-y-3 md:hidden">
-        {filtered.map((s) => (
+        {students.map((s) => (
           <StudentCard
             key={s.id}
             student={s}
             branchName={getBranch(s.branchId)?.name}
-            present={isPresentToday(s.id)}
+            present={presentTodayIds.has(s.id)}
             onView={() => openView(s)}
             onEdit={() => openEdit(s)}
             onQr={() => openQr(s.id)}
             onDelete={() => remove(s)}
           />
         ))}
-        {filtered.length === 0 && (
+        {!loading && students.length === 0 && (
           <p className="text-sm text-mist">
             {search ? "No students match your search." : "No students found."}
           </p>
@@ -240,7 +263,7 @@ export function AdminStudents() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s) => (
+              {students.map((s) => (
                 <StudentRow
                   key={s.id}
                   student={s}
@@ -254,12 +277,36 @@ export function AdminStudents() {
             </tbody>
           </table>
         </TableWrap>
-        {filtered.length === 0 && (
+        {!loading && students.length === 0 && (
           <p className="text-sm text-mist">
             {search ? "No students match your search." : "No students found."}
           </p>
         )}
       </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-mist">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages || loading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      )}
 
       <Modal
         open={formOpen}
@@ -366,7 +413,6 @@ export function AdminStudents() {
         student={viewing}
         branchName={viewing ? getBranch(viewing.branchId)?.name : undefined}
       />
-
     </div>
   );
 }

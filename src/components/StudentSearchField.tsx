@@ -5,8 +5,8 @@ import type { QrScannerHandle } from "./QrScanner";
 import { Input } from "./ui/Input";
 import { Button } from "./ui/Button";
 import { Modal } from "./ui/Modal";
-import { buildQrPayload } from "../lib/qr";
-import type { Student } from "../types";
+import { getStudentByQr } from "../lib/db";
+import { sanitizeRollNumber } from "../lib/validation";
 
 const LazyQrScanner = lazy(() =>
   import("./QrScanner").then((m) => ({ default: m.QrScanner })),
@@ -15,17 +15,18 @@ const LazyQrScanner = lazy(() =>
 interface StudentSearchFieldProps {
   value: string;
   onChange: (value: string) => void;
-  students: Student[];
   label?: string;
   placeholder?: string;
+  /** Limit QR lookup to this branch (managers/users). */
+  branchId?: string;
 }
 
 export function StudentSearchField({
   value,
   onChange,
-  students,
   label = "Search",
   placeholder = "Name, phone, roll number, or QR code",
+  branchId,
 }: StudentSearchFieldProps) {
   const scannerRef = useRef<QrScannerHandle>(null);
   const [scanOpen, setScanOpen] = useState(false);
@@ -38,18 +39,22 @@ export function StudentSearchField({
   };
 
   const handleScan = async ({ sid, tok }: { sid: string; tok: string }) => {
-    const student = students.find((s) => s.id === sid && s.qrToken === tok);
-    if (!student) {
-      toastError("This QR is not linked to a student in the current list.", "Student not found");
-      return;
-    }
+    try {
+      const student = await getStudentByQr(sid, tok, branchId);
+      if (!student) {
+        toastError("This QR is not linked to a student in scope.", "Student not found");
+        return;
+      }
 
-    if (scannerRef.current?.isActive()) {
-      await scannerRef.current.stop();
-    }
+      if (scannerRef.current?.isActive()) {
+        await scannerRef.current.stop();
+      }
 
-    onChange(buildQrPayload(student));
-    setScanOpen(false);
+      onChange(sanitizeRollNumber(student.rollNumber) || student.name);
+      setScanOpen(false);
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Lookup failed.", "Could not look up");
+    }
   };
 
   return (

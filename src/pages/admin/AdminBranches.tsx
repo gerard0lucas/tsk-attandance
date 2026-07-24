@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LayoutGrid, LayoutList } from "lucide-react";
 import { useStore } from "../../store/useStore";
 import {
@@ -7,6 +7,7 @@ import {
   emptyBranchInput,
   type BranchInput,
 } from "../../lib/branch";
+import { countActiveStudentsByBranch } from "../../lib/db";
 import { validateBranchFields } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
 import { BranchCard } from "../../components/BranchCard";
@@ -87,7 +88,6 @@ function ViewToggle({
 
 export function AdminBranches() {
   const branches = useStore((s) => s.branches);
-  const students = useStore((s) => s.students);
   const addBranch = useStore((s) => s.addBranch);
   const updateBranch = useStore((s) => s.updateBranch);
   const deleteBranch = useStore((s) => s.deleteBranch);
@@ -96,9 +96,25 @@ export function AdminBranches() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
   const [form, setForm] = useState<BranchInput>(emptyBranchInput());
+  const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const { errors, clearField, clearAll, validate } = useFormValidation<
     "name" | "contact1Phone" | "contact2Phone" | "mapLocation"
   >();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const counts = await countActiveStudentsByBranch();
+        if (!cancelled) setStudentCounts(counts);
+      } catch {
+        if (!cancelled) setStudentCounts({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branches]);
 
   const setField = <K extends keyof BranchInput>(key: K, value: BranchInput[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -161,7 +177,7 @@ export function AdminBranches() {
             <BranchCard
               key={b.id}
               branch={b}
-              studentCount={students.filter((s) => s.branchId === b.id).length}
+              studentCount={studentCounts[b.id] ?? 0}
               view="grid"
               onEdit={() => openEdit(b)}
               onDelete={() => {
@@ -176,7 +192,7 @@ export function AdminBranches() {
             <BranchCard
               key={b.id}
               branch={b}
-              studentCount={students.filter((s) => s.branchId === b.id).length}
+              studentCount={studentCounts[b.id] ?? 0}
               view="list"
               onEdit={() => openEdit(b)}
               onDelete={() => {

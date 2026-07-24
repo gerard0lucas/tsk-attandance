@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addMonths, format, isSameDay, isSameMonth } from "date-fns";
 import { CalendarRange, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useStore } from "../store/useStore";
@@ -6,12 +6,13 @@ import { APP_SLUG } from "../lib/branding";
 import { todayKey } from "../lib/dates";
 import {
   buildReportRows,
-  filterAttendance,
   countByDate,
   reportToCsv,
   formatReportDate,
 } from "../lib/attendanceReport";
 import {
+  REPORT_CHART_COLORS,
+  REPORT_CHART_PALETTE,
   activeStudentsInBranch,
   branchAttendanceSlices,
   branchEnrollmentSlices,
@@ -31,6 +32,13 @@ import {
   type ReportPeriod,
   parseDateKey,
 } from "../lib/reportRanges";
+import {
+  countActiveStudents,
+  countActiveStudentsByBranch,
+  getStudentsByIds,
+  listAttendanceInRange,
+  listStudentsByBranch,
+} from "../lib/db";
 import { BranchBarChart, DailyBarChart } from "../components/reports/GroupedBarChart";
 import { DonutChart } from "../components/reports/DonutChart";
 import { ReportChartCard } from "../components/reports/ReportChartCard";
@@ -38,6 +46,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { Select } from "../components/ui/Select";
+import type { AttendanceRecord, Student } from "../types";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -49,10 +58,7 @@ const PERIOD_OPTIONS: { id: ReportPeriod; label: string }[] = [
 
 export function ReportsPage() {
   const session = useStore((s) => s.session);
-  const attendance = useStore((s) => s.attendance);
-  const students = useStore((s) => s.students);
   const branches = useStore((s) => s.branches);
-  const getStudent = useStore((s) => s.getStudent);
   const getBranch = useStore((s) => s.getBranch);
   const getMarkedByName = useStore((s) => s.getMarkedByName);
 
@@ -66,30 +72,122 @@ export function ReportsPage() {
   const [period, setPeriod] = useState<ReportPeriod>("weekly");
   const [branchFilter, setBranchFilter] = useState<"all" | string>(scopedBranch);
 
+  const [periodRecords, setPeriodRecords] = useState<AttendanceRecord[]>([]);
+  const [monthAttendance, setMonthAttendance] = useState<AttendanceRecord[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [activeCount, setActiveCount] = useState(0);
+  const [branchCounts, setBranchCounts] = useState<Record<string, number>>({});
+
   const { from, to, label } = useMemo(
     () => periodRange(period, selectedDateKey),
     [period, selectedDateKey],
   );
 
-  const periodRecords = useMemo(
-    () => filterAttendance(attendance, from, to, branchFilter),
-    [attendance, from, to, branchFilter],
-  );
+  const gridDays = useMemo(() => calendarDaysForMonth(visibleMonth), [visibleMonth]);
+  const gridFrom = toDateKey(gridDays[0]!);
+  const gridTo = toDateKey(gridDays[gridDays.length - 1]!);
+
+  useEffect(() => {
+    let cancelled = false;
+    const branchId = branchFilter === "all" ? undefined : branchFilter;
+
+    void (async () => {
+      try {
+        const records = await listAttendanceInRange({ from, to, branchId });
+        if (cancelled) return;
+
+        if (branchId) {
+          const [branchStudents, count] = await Promise.all([
+            listStudentsByBranch(branchId, { activeOnly: true }),
+            countActiveStudents(branchId),
+          ]);
+          if (cancelled) return;
+          setPeriodRecords(records);
+          setStudents(branchStudents);
+          setActiveCount(count);
+          setBranchCounts({ [branchId]: count });
+        } else {
+          const ids = [...new Set(records.map((r) => r.studentId))];
+          const [fetched, totalActive, counts] = await Promise.all([
+            getStudentsByIds(ids),
+            countActiveStudents(),
+            countActiveStudentsByBranch(),
+          ]);
+          if (cancelled) return;
+          setPeriodRecords(records);
+          setStudents(fetched);
+          setActiveCount(totalActive);
+          setBranchCounts(counts);
+        }
+      } catch {
+        if (!cancelled) {
+          setPeriodRecords([]);
+          setStudents([]);
+          setActiveCount(0);
+          setBranchCounts({});
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [from, to, branchFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const branchId = branchFilter === "all" ? undefined : branchFilter;
+
+    void (async () => {
+      try {
+        const records = await listAttendanceInRange({
+          from: gridFrom,
+          to: gridTo,
+          branchId,
+        });
+        if (!cancelled) setMonthAttendance(records);
+      } catch {
+        if (!cancelled) setMonthAttendance([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [gridFrom, gridTo, branchFilter]);
+
+  const studentById = useMemo(() => {
+    const map = new Map(students.map((s) => [s.id, s]));
+    return (id: string) => map.get(id);
+  }, [students]);
 
   const rows = useMemo(
-    () => buildReportRows(periodRecords, getStudent, getBranch, getMarkedByName),
-    [periodRecords, getStudent, getBranch, getMarkedByName],
+    () => buildReportRows(periodRecords, studentById, getBranch, getMarkedByName),
+    [periodRecords, studentById, getBranch, getMarkedByName],
   );
 
-  const activeInScope = useMemo(
-    () => activeStudentsInBranch(students, branchFilter),
-    [students, branchFilter],
-  );
+  const activeInScope = useMemo(() => {
+    if (branchFilter === "all") {
+      return students.filter((s) => s.active);
+    }
+    return activeStudentsInBranch(students, branchFilter);
+  }, [students, branchFilter]);
 
-  const presentAbsent = useMemo(
-    () => presentAbsentSlices(periodRecords, activeInScope),
-    [periodRecords, activeInScope],
-  );
+  const presentAbsent = useMemo(() => {
+    if (branchFilter === "all") {
+      if (activeCount === 0) return [];
+      const present = new Set(periodRecords.map((r) => r.studentId)).size;
+      return [
+        { name: "Present", value: present, fill: REPORT_CHART_COLORS.cerulean },
+        {
+          name: "Absent",
+          value: Math.max(activeCount - present, 0),
+          fill: REPORT_CHART_COLORS.morning,
+        },
+      ];
+    }
+    return presentAbsentSlices(periodRecords, activeInScope);
+  }, [branchFilter, activeCount, periodRecords, activeInScope]);
 
   const genderSlices = useMemo(
     () => genderAttendanceSlices(periodRecords, activeInScope),
@@ -101,10 +199,18 @@ export function ReportsPage() {
     [periodRecords, branches, branchFilter],
   );
 
-  const branchEnrollment = useMemo(
-    () => branchEnrollmentSlices(branches, students, branchFilter),
-    [branches, students, branchFilter],
-  );
+  const branchEnrollment = useMemo(() => {
+    if (branchFilter === "all") {
+      return branches
+        .map((branch, index) => ({
+          name: branch.name,
+          value: branchCounts[branch.id] ?? 0,
+          fill: REPORT_CHART_PALETTE[index % REPORT_CHART_PALETTE.length],
+        }))
+        .filter((s) => s.value > 0);
+    }
+    return branchEnrollmentSlices(branches, students, branchFilter);
+  }, [branches, students, branchFilter, branchCounts]);
 
   const branchChart = branchSlices.length > 0 ? branchSlices : branchEnrollment;
   const branchDonutSubtitle =
@@ -138,28 +244,37 @@ export function ReportsPage() {
       ? "Top classes with present students"
       : "All active students by class";
 
-  const dailyTrend = useMemo(
-    () => dailyAttendanceTrend(periodRecords, from, to, activeInScope),
-    [periodRecords, from, to, activeInScope],
-  );
+  const dailyTrend = useMemo(() => {
+    if (branchFilter === "all") {
+      const countProxy = { length: activeCount } as unknown as Student[];
+      return dailyAttendanceTrend(periodRecords, from, to, countProxy);
+    }
+    return dailyAttendanceTrend(periodRecords, from, to, activeInScope);
+  }, [branchFilter, activeCount, periodRecords, from, to, activeInScope]);
 
   const trendSubtitle = useMemo(
     () => formatAttendanceTrendSubtitle(dailyTrend),
     [dailyTrend],
   );
 
-  const branchTrend = useMemo(
-    () => branchPresentAbsentTrend(periodRecords, branches, students, branchFilter),
-    [periodRecords, branches, students, branchFilter],
-  );
+  const branchTrend = useMemo(() => {
+    if (branchFilter === "all") {
+      return branches.map((branch) => {
+        const total = branchCounts[branch.id] ?? 0;
+        const presentIds = new Set(
+          periodRecords.filter((r) => r.branchId === branch.id).map((r) => r.studentId),
+        );
+        const present = presentIds.size;
+        return {
+          name: branch.name,
+          present,
+          absent: Math.max(total - present, 0),
+        };
+      });
+    }
+    return branchPresentAbsentTrend(periodRecords, branches, students, branchFilter);
+  }, [periodRecords, branches, students, branchFilter, branchCounts]);
 
-  const gridDays = useMemo(() => calendarDaysForMonth(visibleMonth), [visibleMonth]);
-  const gridFrom = toDateKey(gridDays[0]!);
-  const gridTo = toDateKey(gridDays[gridDays.length - 1]!);
-  const monthAttendance = useMemo(
-    () => filterAttendance(attendance, gridFrom, gridTo, branchFilter),
-    [attendance, gridFrom, gridTo, branchFilter],
-  );
   const dayCounts = useMemo(() => countByDate(monthAttendance), [monthAttendance]);
 
   const showBranchCharts = branchFilter === "all" && branches.length > 1;
