@@ -188,13 +188,18 @@ export function AdminManagers() {
             key={m.id}
             actions={
               <>
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(m)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 whitespace-nowrap px-4 sm:min-w-[5.5rem] sm:flex-none sm:px-5"
+                  onClick={() => openEdit(m)}
+                >
                   Edit
                 </Button>
                 <Button
                   variant={m.active ? "danger" : "outline"}
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 whitespace-nowrap px-4 sm:min-w-[7.5rem] sm:flex-none sm:px-5"
                   onClick={() => void toggleActive(m)}
                 >
                   {m.active ? "Deactivate" : "Activate"}
@@ -267,13 +272,18 @@ export function AdminManagers() {
                   <td className={tableCellMuted}>{m.address || "—"}</td>
                   <td className={tableCellMuted}>{getBranch(m.branchId)?.name ?? "—"}</td>
                   <td className={tableActionsCell}>
-                    <Button variant="outline" size="sm" onClick={() => openEdit(m)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="whitespace-nowrap px-4 sm:px-5"
+                      onClick={() => openEdit(m)}
+                    >
                       Edit
                     </Button>
                     <Button
                       variant={m.active ? "danger" : "outline"}
                       size="sm"
-                      className="ml-2"
+                      className="ml-2 whitespace-nowrap px-4 sm:px-5"
                       onClick={() => void toggleActive(m)}
                     >
                       {m.active ? "Deactivate" : "Activate"}

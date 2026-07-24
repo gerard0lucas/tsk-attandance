@@ -153,13 +153,18 @@ export function ManagerUsers() {
             key={u.id}
             actions={
               <>
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => openEdit(u)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 whitespace-nowrap px-4 sm:min-w-[5.5rem] sm:flex-none sm:px-5"
+                  onClick={() => openEdit(u)}
+                >
                   Edit
                 </Button>
                 <Button
                   variant={u.active ? "danger" : "outline"}
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 whitespace-nowrap px-4 sm:min-w-[7.5rem] sm:flex-none sm:px-5"
                   onClick={() => void toggleActive(u)}
                 >
                   {u.active ? "Deactivate" : "Activate"}
