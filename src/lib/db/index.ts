@@ -140,6 +140,8 @@ export type ListStudentsParams = {
   branchId?: string;
   activeOnly?: boolean;
   search?: string;
+  /** Exact class match (e.g. "5") */
+  studentClass?: string;
   page?: number;
   pageSize?: number;
 };
@@ -159,6 +161,7 @@ export async function listStudents(
 
   if (params.branchId) q = q.eq("branch_id", params.branchId);
   if (params.activeOnly) q = q.eq("active", true);
+  if (params.studentClass) q = q.eq("class", params.studentClass);
 
   const search = params.search?.trim();
   if (search) {
@@ -293,6 +296,41 @@ export async function countPresentForDate(
   const { count, error } = await q;
   if (error) throw error;
   return count ?? 0;
+}
+
+/** Present count for a branch/date, optionally limited to one class. */
+export async function countPresentForBranchDate(params: {
+  branchId: string;
+  date: string;
+  studentClass?: string;
+}): Promise<number> {
+  if (!params.studentClass) {
+    return countPresentForDate(params.date, params.branchId);
+  }
+
+  const { count, error } = await supabase
+    .from("attendance")
+    .select("id, students!inner(class, active)", { count: "exact", head: true })
+    .eq("branch_id", params.branchId)
+    .eq("date", params.date)
+    .eq("students.class", params.studentClass)
+    .eq("students.active", true);
+
+  if (!error) return count ?? 0;
+
+  // Fallback if the embed relationship name differs
+  const classIds = await fetchAllPages<{ id: string }>((from, to) =>
+    supabase
+      .from("students")
+      .select("id")
+      .eq("branch_id", params.branchId)
+      .eq("class", params.studentClass!)
+      .eq("active", true)
+      .range(from, to),
+  );
+  const idSet = new Set(classIds.map((r) => r.id));
+  const day = await listAttendanceForBranchDate(params.branchId, params.date);
+  return day.filter((r) => idSet.has(r.studentId)).length;
 }
 
 /** Per-branch active student counts (for admin dashboards). */

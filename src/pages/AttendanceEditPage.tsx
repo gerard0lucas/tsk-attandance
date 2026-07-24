@@ -20,12 +20,15 @@ import {
 } from "../components/ui/TableWrap";
 import { formatTime, todayKey } from "../lib/dates";
 import { formatReportDate } from "../lib/attendanceReport";
-import { compareRollNumber } from "../lib/student";
+import { CLASS_OPTIONS, compareRollNumber } from "../lib/student";
 import {
+  countPresentForBranchDate,
   listAttendanceForBranchDate,
-  listStudentsByBranch,
+  listStudents,
 } from "../lib/db";
 import type { AttendanceRecord, Student, UserRole } from "../types";
+
+const PAGE_SIZE = 50;
 
 function studentProfilePath(role: UserRole | undefined, studentId: string): string {
   const base = role === "admin" ? "/admin" : role === "user" ? "/user" : "/manager";
@@ -53,44 +56,71 @@ export function AttendanceEditPage() {
   );
   const branchId = isAdmin ? selectedBranch : session?.branchId;
   const [filterDate, setFilterDate] = useState(todayKey);
+  const [classFilter, setClassFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+
   const [students, setStudents] = useState<Student[]>([]);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [presentTotal, setPresentTotal] = useState(0);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    if (!branchId) {
-      setStudents([]);
-      setAttendance([]);
-      return;
-    }
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const [branchStudents, dayAttendance] = await Promise.all([
-        listStudentsByBranch(branchId, { activeOnly: true }),
-        listAttendanceForBranchDate(branchId, filterDate),
-      ]);
-      setStudents(branchStudents);
-      setAttendance(dayAttendance);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load attendance.");
-      setStudents([]);
-      setAttendance([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [branchId, filterDate]);
-
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    setPage(1);
+  }, [branchId, filterDate, classFilter]);
 
   useEffect(() => {
     if (isAdmin && !selectedBranch && branches[0]?.id) {
       setSelectedBranch(branches[0].id);
     }
   }, [isAdmin, selectedBranch, branches]);
+
+  const reload = useCallback(async () => {
+    if (!branchId) {
+      setStudents([]);
+      setAttendance([]);
+      setTotalStudents(0);
+      setPresentTotal(0);
+      return;
+    }
+    setLoading(true);
+    setLoadError(null);
+    const studentClass = classFilter === "all" ? undefined : classFilter;
+    try {
+      const [pageResult, dayAttendance, presentCount] = await Promise.all([
+        listStudents({
+          branchId,
+          activeOnly: true,
+          studentClass,
+          page,
+          pageSize: PAGE_SIZE,
+        }),
+        listAttendanceForBranchDate(branchId, filterDate),
+        countPresentForBranchDate({
+          branchId,
+          date: filterDate,
+          studentClass,
+        }),
+      ]);
+      setStudents(pageResult.students);
+      setTotalStudents(pageResult.total);
+      setAttendance(dayAttendance);
+      setPresentTotal(presentCount);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load attendance.");
+      setStudents([]);
+      setAttendance([]);
+      setTotalStudents(0);
+      setPresentTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [branchId, filterDate, classFilter, page]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   const records = useMemo(() => {
     const byStudent = new Map<string, AttendanceRecord>();
@@ -109,8 +139,8 @@ export function AttendanceEditPage() {
       .sort((a, b) => compareRollNumber(a.student.rollNumber, b.student.rollNumber));
   }, [students, records]);
 
-  const presentCount = studentRows.filter((row) => row.present).length;
-  const absentCount = studentRows.length - presentCount;
+  const absentTotal = Math.max(totalStudents - presentTotal, 0);
+  const totalPages = Math.max(1, Math.ceil(totalStudents / PAGE_SIZE));
 
   const openProfile = (studentId: string) => {
     navigate(studentProfilePath(session?.role, studentId));
@@ -126,11 +156,13 @@ export function AttendanceEditPage() {
           ...prev.filter((a) => !(a.studentId === student.id && a.date === filterDate)),
           res.record!,
         ]);
+        setPresentTotal((n) => n + 1);
       } else {
         void reload();
       }
     } else {
       toastError(res.message, "Could not mark");
+      void reload();
     }
   };
 
@@ -148,9 +180,14 @@ export function AttendanceEditPage() {
     try {
       await deleteAttendance(record.id, record.branchId);
       setAttendance((prev) => prev.filter((a) => a.id !== record.id));
+      setPresentTotal((n) => Math.max(0, n - 1));
       toastSuccess("Attendance updated.", "Marked absent");
-    } catch {
-      toastError("You can only change attendance for students in your branch.", "Could not remove");
+    } catch (e) {
+      toastError(
+        e instanceof Error ? e.message : "Could not remove attendance.",
+        "Could not remove",
+      );
+      void reload();
     }
   };
 
@@ -166,6 +203,10 @@ export function AttendanceEditPage() {
 
   const branchLabel = getBranch(branchId)?.name ?? "Branch";
   const dateLabel = formatReportDate(filterDate);
+  const emptyMessage =
+    classFilter !== "all"
+      ? `No active students in class ${classFilter}.`
+      : "No active students in this branch.";
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -179,7 +220,7 @@ export function AttendanceEditPage() {
       />
 
       <Card>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {isAdmin && (
             <Select
               label="Branch"
@@ -195,16 +236,25 @@ export function AttendanceEditPage() {
             max={todayKey()}
             onChange={(e) => setFilterDate(e.target.value)}
           />
+          <Select
+            label="Class"
+            value={classFilter}
+            onChange={(e) => setClassFilter(e.target.value)}
+            options={[
+              { value: "all", label: "All classes" },
+              ...CLASS_OPTIONS,
+            ]}
+          />
         </div>
         <div className="mt-4 flex flex-wrap gap-2 border-t border-morning pt-4 text-sm">
           <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
-            {studentRows.length} students
+            {totalStudents} students
           </span>
           <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
-            {presentCount} present
+            {presentTotal} present
           </span>
           <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
-            {absentCount} absent
+            {absentTotal} absent
           </span>
           <span className="text-mist">{dateLabel}</span>
           {loading && <span className="text-mist">Loading…</span>}
@@ -272,7 +322,7 @@ export function AttendanceEditPage() {
           </CardRow>
         ))}
         {!loading && studentRows.length === 0 && (
-          <p className="text-sm text-mist">No active students in this branch.</p>
+          <p className="text-sm text-mist">{emptyMessage}</p>
         )}
       </div>
 
@@ -349,9 +399,40 @@ export function AttendanceEditPage() {
           </table>
         </TableWrap>
         {!loading && studentRows.length === 0 && (
-          <p className="text-sm text-mist">No active students in this branch.</p>
+          <p className="text-sm text-mist">{emptyMessage}</p>
         )}
       </Card>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-mist">
+            Page {page} of {totalPages}
+            {totalStudents > 0 && (
+              <>
+                {" "}
+                · showing {(page - 1) * PAGE_SIZE + 1}–
+                {Math.min(page * PAGE_SIZE, totalStudents)} of {totalStudents}
+              </>
+            )}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages || loading}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
