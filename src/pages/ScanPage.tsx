@@ -97,7 +97,7 @@ export function ScanPage() {
 
     const resumeScanningSoon = () => {
       setCooldown(true);
-      window.setTimeout(() => setCooldown(false), 2000);
+      window.setTimeout(() => setCooldown(false), 1000);
     };
 
     if (alreadyPresent || !result.isConfirmed || !session) {
