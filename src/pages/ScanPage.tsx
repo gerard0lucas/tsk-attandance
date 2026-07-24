@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Swal from "sweetalert2";
 import { useStore } from "../store/useStore";
 import { toastError, toastSuccess, toastWarning } from "../lib/toast";
-import { QrScanner, type QrScannerHandle } from "../components/QrScanner";
+import { QrScanner } from "../components/QrScanner";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -46,7 +46,6 @@ export function ScanPage() {
   const getBranch = useStore((s) => s.getBranch);
   const markAttendance = useStore((s) => s.markAttendance);
 
-  const scannerRef = useRef<QrScannerHandle>(null);
   const [manualId, setManualId] = useState("");
   const [cooldown, setCooldown] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
@@ -74,10 +73,7 @@ export function ScanPage() {
       return;
     }
 
-    if (scannerRef.current?.isActive()) {
-      await scannerRef.current.stop();
-    }
-
+    // Keep camera running; `paused` blocks further scans while the dialog is open
     const branchName = getBranch(student.branchId)?.name;
     let alreadyPresent = false;
     try {
@@ -99,15 +95,21 @@ export function ScanPage() {
       allowOutsideClick: false,
     });
 
-    if (alreadyPresent || !result.isConfirmed || !session) return;
+    const resumeScanningSoon = () => {
+      setCooldown(true);
+      window.setTimeout(() => setCooldown(false), 2000);
+    };
+
+    if (alreadyPresent || !result.isConfirmed || !session) {
+      resumeScanningSoon();
+      return;
+    }
 
     try {
       const res = await markAttendance(student.id, session.userId, student);
 
       if (res.ok) {
         toastSuccess(res.message, "Present!");
-        setCooldown(true);
-        window.setTimeout(() => setCooldown(false), 2000);
       } else {
         toastError(res.message, "Could not mark");
       }
@@ -116,6 +118,8 @@ export function ScanPage() {
         e instanceof Error ? e.message : "Could not mark attendance.",
         "Could not mark",
       );
+    } finally {
+      resumeScanningSoon();
     }
   };
 
@@ -169,14 +173,13 @@ export function ScanPage() {
         title="Scan attendance"
         subtitle={
           isBranchStaff
-            ? `Your branch only — ${getBranch(session!.branchId!)?.name ?? "students in your branch"}`
-            : "Scan QR — camera closes when student is found"
+            ? `${getBranch(session!.branchId!)?.name ?? "Your branch"} — camera stays on for continuous check-in`
+            : "Scan QR — camera stays on for continuous check-in"
         }
       />
 
       <Card className="!p-3 sm:!p-5">
         <QrScanner
-          ref={scannerRef}
           paused={cooldown || lookingUp}
           onScan={({ sid, tok }) => handleScan(sid, tok)}
           onInvalidScan={() =>
