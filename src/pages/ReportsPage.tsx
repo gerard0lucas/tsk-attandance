@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { addMonths, format, isSameDay, isSameMonth } from "date-fns";
 import { CalendarRange, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useStore } from "../store/useStore";
@@ -71,12 +71,15 @@ export function ReportsPage() {
   const [selectedDateKey, setSelectedDateKey] = useState(() => todayKey());
   const [period, setPeriod] = useState<ReportPeriod>("weekly");
   const [branchFilter, setBranchFilter] = useState<"all" | string>(scopedBranch);
+  const [isPeriodPending, startPeriodTransition] = useTransition();
 
   const [periodRecords, setPeriodRecords] = useState<AttendanceRecord[]>([]);
   const [monthAttendance, setMonthAttendance] = useState<AttendanceRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [activeCount, setActiveCount] = useState(0);
   const [branchCounts, setBranchCounts] = useState<Record<string, number>>({});
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [rosterLoading, setRosterLoading] = useState(false);
 
   const { from, to, label } = useMemo(
     () => periodRange(period, selectedDateKey),
@@ -87,45 +90,77 @@ export function ReportsPage() {
   const gridFrom = toDateKey(gridDays[0]!);
   const gridTo = toDateKey(gridDays[gridDays.length - 1]!);
 
+  // Roster / enrollment counts only change with branch — not daily/weekly/monthly
   useEffect(() => {
     let cancelled = false;
     const branchId = branchFilter === "all" ? undefined : branchFilter;
+    setRosterLoading(true);
 
     void (async () => {
       try {
-        const records = await listAttendanceInRange({ from, to, branchId });
-        if (cancelled) return;
-
         if (branchId) {
           const [branchStudents, count] = await Promise.all([
             listStudentsByBranch(branchId, { activeOnly: true }),
             countActiveStudents(branchId),
           ]);
           if (cancelled) return;
-          setPeriodRecords(records);
           setStudents(branchStudents);
           setActiveCount(count);
           setBranchCounts({ [branchId]: count });
         } else {
-          const ids = [...new Set(records.map((r) => r.studentId))];
-          const [fetched, totalActive, counts] = await Promise.all([
-            getStudentsByIds(ids),
+          // Enrollment counts only — student rows for "all" come from period check-ins
+          const [totalActive, counts] = await Promise.all([
             countActiveStudents(),
             countActiveStudentsByBranch(),
           ]);
           if (cancelled) return;
-          setPeriodRecords(records);
-          setStudents(fetched);
           setActiveCount(totalActive);
           setBranchCounts(counts);
         }
       } catch {
         if (!cancelled) {
-          setPeriodRecords([]);
-          setStudents([]);
           setActiveCount(0);
           setBranchCounts({});
+          if (branchId) setStudents([]);
         }
+      } finally {
+        if (!cancelled) setRosterLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [branchFilter]);
+
+  // Attendance for the selected period — keep this lean on period toggles
+  useEffect(() => {
+    let cancelled = false;
+    const branchId = branchFilter === "all" ? undefined : branchFilter;
+    setAttendanceLoading(true);
+
+    void (async () => {
+      try {
+        const records = await listAttendanceInRange({ from, to, branchId });
+        if (cancelled) return;
+
+        if (!branchId) {
+          // Need student details for CSV / gender-class charts for people who checked in
+          const ids = [...new Set(records.map((r) => r.studentId))];
+          const fetched = await getStudentsByIds(ids);
+          if (cancelled) return;
+          setPeriodRecords(records);
+          setStudents(fetched);
+        } else {
+          setPeriodRecords(records);
+        }
+      } catch {
+        if (!cancelled) {
+          setPeriodRecords([]);
+          if (branchFilter === "all") setStudents([]);
+        }
+      } finally {
+        if (!cancelled) setAttendanceLoading(false);
       }
     })();
 
@@ -134,6 +169,7 @@ export function ReportsPage() {
     };
   }, [from, to, branchFilter]);
 
+  // Calendar dots — independent of period toggle
   useEffect(() => {
     let cancelled = false;
     const branchId = branchFilter === "all" ? undefined : branchFilter;
@@ -279,6 +315,7 @@ export function ReportsPage() {
 
   const showBranchCharts = branchFilter === "all" && branches.length > 1;
   const selectedDate = parseDateKey(selectedDateKey);
+  const loading = attendanceLoading || rosterLoading || isPeriodPending;
 
   const downloadCsv = () => {
     const csv = reportToCsv(rows);
@@ -315,7 +352,7 @@ export function ReportsPage() {
             <button
               key={id}
               type="button"
-              onClick={() => setPeriod(id)}
+              onClick={() => startPeriodTransition(() => setPeriod(id))}
               className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                 period === id
                   ? "bg-cerulean text-white shadow-sm"
@@ -351,9 +388,12 @@ export function ReportsPage() {
       <p className="text-sm text-mist">
         {label} · {formatReportDate(from)}
         {from !== to && ` → ${formatReportDate(to)}`}
+        {loading ? " · Updating…" : ""}
       </p>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div
+        className={`grid grid-cols-1 gap-4 xl:grid-cols-2 ${loading ? "opacity-70 transition-opacity" : ""}`}
+      >
         <ReportChartCard
           title="Attendance split"
           subtitle="Present vs absent students in this period"
@@ -375,7 +415,9 @@ export function ReportsPage() {
         </ReportChartCard>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <div
+        className={`grid grid-cols-1 gap-4 xl:grid-cols-2 ${loading ? "opacity-70 transition-opacity" : ""}`}
+      >
         {showBranchCharts ? (
           <>
             <ReportChartCard title="Students by branch" subtitle={branchDonutSubtitle}>
