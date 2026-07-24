@@ -11,6 +11,7 @@ export type ProfileRow = {
   phone?: string;
   photo_url?: string | null;
   address?: string;
+  active?: boolean;
   created_at: string;
 };
 
@@ -51,7 +52,7 @@ export type AttendanceRow = {
   id: string;
   student_id: string;
   branch_id: string;
-  manager_id: string;
+  manager_id: string | null;
   date: string;
   marked_at: string;
 };
@@ -108,6 +109,7 @@ export function toManager(row: ProfileRow): Manager {
     phone: row.phone ?? "",
     photo: row.photo_url ?? undefined,
     address: row.address ?? "",
+    active: row.active !== false,
     createdAt: row.created_at,
   };
 }
@@ -121,6 +123,7 @@ export function toBranchUser(row: ProfileRow): BranchUser {
     phone: row.phone ?? "",
     photo: row.photo_url ?? undefined,
     address: row.address ?? "",
+    active: row.active !== false,
     createdAt: row.created_at,
   };
 }
@@ -149,7 +152,7 @@ export function toAttendance(row: AttendanceRow): AttendanceRecord {
     id: row.id,
     studentId: row.student_id,
     branchId: row.branch_id,
-    markedById: row.manager_id,
+    markedById: row.manager_id ?? "",
     date: row.date,
     markedAt: row.marked_at,
   };

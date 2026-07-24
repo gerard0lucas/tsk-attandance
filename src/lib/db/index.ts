@@ -29,7 +29,7 @@ import { isDataUrl, removeStudentPhoto, uploadStudentPhoto, uploadProfilePhoto, 
 import { pauseAuthSync, resumeAuthSync } from "../authSync";
 import { getDbErrorMessage, isMissingBranchIdColumn } from "./errors";
 
-export { fetchSessionProfile } from "../session";
+export { fetchSessionProfile, isCurrentProfileInactive } from "../session";
 
 export async function signIn(email: string, password: string): Promise<{ ok: true } | { ok: false; message: string }> {
   const { error } = await supabase.auth.signInWithPassword({
@@ -671,14 +671,31 @@ export async function patchBranchUser(
   }
 }
 
-export async function removeManager(id: string): Promise<void> {
-  const { error } = await supabase.from("profiles").delete().eq("id", id);
-  if (error) throw error;
+async function setProfileActive(
+  id: string,
+  active: boolean,
+  label: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ active })
+    .eq("id", id)
+    .neq("active", active)
+    .select("id");
+  if (error) throw new Error(getDbErrorMessage(error));
+  if (!data?.length) {
+    throw new Error(
+      `Could not update this ${label}. You may not have permission, or it is already ${active ? "active" : "inactive"}.`,
+    );
+  }
 }
 
-export async function removeBranchUser(id: string): Promise<void> {
-  const { error } = await supabase.from("profiles").delete().eq("id", id);
-  if (error) throw error;
+export async function setManagerActive(id: string, active: boolean): Promise<void> {
+  await setProfileActive(id, active, "manager");
+}
+
+export async function setBranchUserActive(id: string, active: boolean): Promise<void> {
+  await setProfileActive(id, active, "user");
 }
 
 async function resolvePhoto(

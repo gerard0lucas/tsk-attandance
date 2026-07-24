@@ -57,6 +57,7 @@ interface AppState {
     }>,
   ) => Promise<{ branchAssigned: boolean }>;
   deleteManager: (id: string) => Promise<void>;
+  setManagerActive: (id: string, active: boolean) => Promise<void>;
 
   addBranchUser: (data: {
     name: string;
@@ -78,6 +79,7 @@ interface AppState {
     }>,
   ) => Promise<void>;
   deleteBranchUser: (id: string) => Promise<void>;
+  setBranchUserActive: (id: string, active: boolean) => Promise<void>;
 
   addStudent: (data: {
     branchId: string;
@@ -216,11 +218,13 @@ export const useStore = create<AppState>()((set, get) => ({
         session = await db.fetchSessionProfile();
       }
       if (!session) {
+        const inactive = await db.isCurrentProfileInactive().catch(() => false);
         await db.signOut();
         return {
           ok: false,
-          message:
-            "Signed in but no profile found. In Supabase, add a row in profiles with your user id and role (admin, manager, or user).",
+          message: inactive
+            ? "This account has been deactivated. Contact an admin."
+            : "Signed in but no profile found. In Supabase, add a row in profiles with your user id and role (admin, manager, or user).",
         };
       }
 
@@ -304,11 +308,18 @@ export const useStore = create<AppState>()((set, get) => ({
 
   deleteManager: (id) =>
     runAction(async () => {
-      await db.removeManager(id);
-      set((s) => {
-        const { [id]: _removed, ...markerNames } = s.markerNames;
-        return { managers: s.managers.filter((m) => m.id !== id), markerNames };
-      });
+      await db.setManagerActive(id, false);
+      set((s) => ({
+        managers: s.managers.map((m) => (m.id === id ? { ...m, active: false } : m)),
+      }));
+    }),
+
+  setManagerActive: (id, active) =>
+    runAction(async () => {
+      await db.setManagerActive(id, active);
+      set((s) => ({
+        managers: s.managers.map((m) => (m.id === id ? { ...m, active } : m)),
+      }));
     }),
 
   addBranchUser: (data) =>
@@ -335,11 +346,18 @@ export const useStore = create<AppState>()((set, get) => ({
 
   deleteBranchUser: (id) =>
     runAction(async () => {
-      await db.removeBranchUser(id);
-      set((s) => {
-        const { [id]: _removed, ...markerNames } = s.markerNames;
-        return { users: s.users.filter((u) => u.id !== id), markerNames };
-      });
+      await db.setBranchUserActive(id, false);
+      set((s) => ({
+        users: s.users.map((u) => (u.id === id ? { ...u, active: false } : u)),
+      }));
+    }),
+
+  setBranchUserActive: (id, active) =>
+    runAction(async () => {
+      await db.setBranchUserActive(id, active);
+      set((s) => ({
+        users: s.users.map((u) => (u.id === id ? { ...u, active } : u)),
+      }));
     }),
 
   addStudent: (data) =>

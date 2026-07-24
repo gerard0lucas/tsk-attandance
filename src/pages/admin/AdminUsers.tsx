@@ -4,6 +4,7 @@ import { useStore } from "../../store/useStore";
 import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
 import { Button } from "../../components/ui/Button";
+import { Badge } from "../../components/ui/Badge";
 import { Card, CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
@@ -19,6 +20,7 @@ import {
 import { FormActions, FormStack } from "../../components/ui/FormStack";
 import { validateUserFields } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
+import { toastError, toastSuccess } from "../../lib/toast";
 import type { BranchUser } from "../../types";
 
 export function AdminUsers() {
@@ -26,9 +28,10 @@ export function AdminUsers() {
   const users = useStore((s) => s.users);
   const getBranch = useStore((s) => s.getBranch);
   const actionError = useStore((s) => s.actionError);
+  const clearActionError = useStore((s) => s.clearActionError);
   const addBranchUser = useStore((s) => s.addBranchUser);
   const updateBranchUser = useStore((s) => s.updateBranchUser);
-  const deleteBranchUser = useStore((s) => s.deleteBranchUser);
+  const setBranchUserActive = useStore((s) => s.setBranchUserActive);
 
   const [filterBranch, setFilterBranch] = useState<"all" | string>("all");
   const [open, setOpen] = useState(false);
@@ -86,14 +89,16 @@ export function AdminUsers() {
           email: email.trim(),
           ...profileFields,
         });
+        toastSuccess(`${name.trim()} was updated.`, "User saved");
       } else {
-        await addBranchUser({
+        const user = await addBranchUser({
           name: name.trim(),
           email: email.trim(),
           password: password.trim(),
           branchId,
           ...profileFields,
         });
+        toastSuccess(`${user.name} can now sign in.`, "User created");
       }
       setOpen(false);
       reset();
@@ -105,6 +110,7 @@ export function AdminUsers() {
   };
 
   const openEdit = (u: BranchUser) => {
+    clearActionError();
     setEditing(u);
     setName(u.name);
     setEmail(u.email);
@@ -115,6 +121,23 @@ export function AdminUsers() {
     setPassword("");
     clearAll();
     setOpen(true);
+  };
+
+  const toggleActive = async (u: BranchUser) => {
+    const next = !u.active;
+    clearActionError();
+    try {
+      await setBranchUserActive(u.id, next);
+      toastSuccess(
+        next ? `${u.name} can sign in again.` : `${u.name} can no longer sign in.`,
+        next ? "User activated" : "User deactivated",
+      );
+    } catch (e) {
+      toastError(
+        e instanceof Error ? e.message : "Could not update status.",
+        "Update failed",
+      );
+    }
   };
 
   return (
@@ -162,14 +185,12 @@ export function AdminUsers() {
                   Edit
                 </Button>
                 <Button
-                  variant="danger"
+                  variant={u.active ? "danger" : "outline"}
                   size="sm"
                   className="flex-1"
-                  onClick={() => {
-                    if (confirm(`Remove ${u.name}?`)) void deleteBranchUser(u.id);
-                  }}
+                  onClick={() => void toggleActive(u)}
                 >
-                  Delete
+                  {u.active ? "Deactivate" : "Activate"}
                 </Button>
               </>
             }
@@ -177,7 +198,12 @@ export function AdminUsers() {
             <div className="flex items-start gap-3">
               <StudentPhoto student={{ name: u.name, photo: u.photo }} size="md" />
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-cerulean">{u.name}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-cerulean">{u.name}</p>
+                  <Badge tone={u.active ? "success" : "neutral"}>
+                    {u.active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
                 <p className="break-all text-sm text-mist">{u.email}</p>
                 <p className="text-sm text-mist">
                   Branch: {getBranch(u.branchId)?.name ?? "—"}
@@ -220,7 +246,12 @@ export function AdminUsers() {
                     <div className="flex items-center gap-3">
                       <StudentPhoto student={{ name: u.name, photo: u.photo }} size="sm" />
                       <div className="min-w-0">
-                        <p className="font-medium text-cerulean">{u.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-cerulean">{u.name}</p>
+                          <Badge tone={u.active ? "success" : "neutral"}>
+                            {u.active ? "Active" : "Inactive"}
+                          </Badge>
+                        </div>
                         <p className="truncate text-sm text-mist">{u.email}</p>
                       </div>
                     </div>
@@ -233,14 +264,12 @@ export function AdminUsers() {
                       Edit
                     </Button>
                     <Button
-                      variant="danger"
+                      variant={u.active ? "danger" : "outline"}
                       size="sm"
                       className="ml-2"
-                      onClick={() => {
-                        if (confirm(`Remove ${u.name}?`)) void deleteBranchUser(u.id);
-                      }}
+                      onClick={() => void toggleActive(u)}
                     >
-                      Delete
+                      {u.active ? "Deactivate" : "Activate"}
                     </Button>
                   </td>
                 </tr>

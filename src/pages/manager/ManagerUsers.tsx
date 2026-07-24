@@ -4,6 +4,7 @@ import { useStore } from "../../store/useStore";
 import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
 import { Button } from "../../components/ui/Button";
+import { Badge } from "../../components/ui/Badge";
 import { CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
@@ -11,18 +12,21 @@ import { PageHeader } from "../../components/ui/PageHeader";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
 import { validateUserFields } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
+import { toastError, toastSuccess } from "../../lib/toast";
 import type { BranchUser } from "../../types";
 
 export function ManagerUsers() {
   const session = useStore((s) => s.session);
   const users = useStore((s) => s.users);
   const actionError = useStore((s) => s.actionError);
+  const clearActionError = useStore((s) => s.clearActionError);
   const addBranchUser = useStore((s) => s.addBranchUser);
   const updateBranchUser = useStore((s) => s.updateBranchUser);
-  const deleteBranchUser = useStore((s) => s.deleteBranchUser);
+  const setBranchUserActive = useStore((s) => s.setBranchUserActive);
 
   const branchId = session?.branchId ?? "";
   const branchUsers = users.filter((u) => u.branchId === branchId);
+  const activeCount = branchUsers.filter((u) => u.active).length;
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BranchUser | null>(null);
@@ -72,14 +76,16 @@ export function ManagerUsers() {
           email: email.trim(),
           ...profileFields,
         });
+        toastSuccess(`${name.trim()} was updated.`, "User saved");
       } else {
-        await addBranchUser({
+        const user = await addBranchUser({
           name: name.trim(),
           email: email.trim(),
           password: password.trim(),
           branchId,
           ...profileFields,
         });
+        toastSuccess(`${user.name} can now sign in.`, "User created");
       }
       setOpen(false);
       reset();
@@ -102,6 +108,23 @@ export function ManagerUsers() {
     setOpen(true);
   };
 
+  const toggleActive = async (u: BranchUser) => {
+    const next = !u.active;
+    clearActionError();
+    try {
+      await setBranchUserActive(u.id, next);
+      toastSuccess(
+        next ? `${u.name} can sign in again.` : `${u.name} can no longer sign in.`,
+        next ? "User activated" : "User deactivated",
+      );
+    } catch (e) {
+      toastError(
+        e instanceof Error ? e.message : "Could not update status.",
+        "Update failed",
+      );
+    }
+  };
+
   if (!branchId) {
     return <p className="text-sm text-mist">No branch assigned. Contact admin.</p>;
   }
@@ -112,7 +135,7 @@ export function ManagerUsers() {
         title="Branch users"
         subtitle="Users who scan QR and edit attendance (2–3 per branch)"
         action={
-          <Button onClick={() => { reset(); setOpen(true); }} disabled={branchUsers.length >= 5}>
+          <Button onClick={() => { reset(); setOpen(true); }} disabled={activeCount >= 5}>
             Add user
           </Button>
         }
@@ -134,14 +157,12 @@ export function ManagerUsers() {
                   Edit
                 </Button>
                 <Button
-                  variant="danger"
+                  variant={u.active ? "danger" : "outline"}
                   size="sm"
                   className="flex-1"
-                  onClick={() => {
-                    if (confirm(`Remove ${u.name}?`)) void deleteBranchUser(u.id);
-                  }}
+                  onClick={() => void toggleActive(u)}
                 >
-                  Delete
+                  {u.active ? "Deactivate" : "Activate"}
                 </Button>
               </>
             }
@@ -149,7 +170,12 @@ export function ManagerUsers() {
             <div className="flex items-start gap-3">
               <StudentPhoto student={{ name: u.name, photo: u.photo }} size="md" />
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-cerulean">{u.name}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-cerulean">{u.name}</p>
+                  <Badge tone={u.active ? "success" : "neutral"}>
+                    {u.active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
                 <p className="break-all text-sm text-mist">{u.email}</p>
                 {u.phone && (
                   <p className="mt-1 flex items-center gap-1.5 text-sm text-mist">

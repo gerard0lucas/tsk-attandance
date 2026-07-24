@@ -4,6 +4,7 @@ import { useStore } from "../../store/useStore";
 import { PhotoUpload } from "../../components/PhotoUpload";
 import { StudentPhoto } from "../../components/StudentPhoto";
 import { Button } from "../../components/ui/Button";
+import { Badge } from "../../components/ui/Badge";
 import { Card, CardRow } from "../../components/ui/Card";
 import { Input } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
@@ -19,6 +20,7 @@ import {
 import { FormActions, FormStack } from "../../components/ui/FormStack";
 import { validateUserFields } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
+import { toastError, toastSuccess } from "../../lib/toast";
 import type { Manager } from "../../types";
 
 export function AdminManagers() {
@@ -29,7 +31,7 @@ export function AdminManagers() {
   const clearActionError = useStore((s) => s.clearActionError);
   const addManager = useStore((s) => s.addManager);
   const updateManager = useStore((s) => s.updateManager);
-  const deleteManager = useStore((s) => s.deleteManager);
+  const setManagerActive = useStore((s) => s.setManagerActive);
 
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
@@ -88,6 +90,8 @@ export function AdminManagers() {
           setNotice(
             "Name and email saved. Branch assignment needs a database update — run supabase/migration_users.sql in Supabase SQL Editor.",
           );
+        } else {
+          toastSuccess(`${name.trim()} was updated.`, "Manager saved");
         }
       } else {
         const manager = await addManager({
@@ -101,6 +105,8 @@ export function AdminManagers() {
           setNotice(
             "Manager created. Run supabase/migration_users.sql in Supabase SQL Editor to enable branch assignment.",
           );
+        } else {
+          toastSuccess(`${manager.name} can now sign in.`, "Manager created");
         }
       }
       setOpen(false);
@@ -125,6 +131,24 @@ export function AdminManagers() {
     setPassword("");
     clearAll();
     setOpen(true);
+  };
+
+  const toggleActive = async (m: Manager) => {
+    const next = !m.active;
+    clearActionError();
+    setNotice("");
+    try {
+      await setManagerActive(m.id, next);
+      toastSuccess(
+        next ? `${m.name} can sign in again.` : `${m.name} can no longer sign in.`,
+        next ? "Manager activated" : "Manager deactivated",
+      );
+    } catch (e) {
+      toastError(
+        e instanceof Error ? e.message : "Could not update status.",
+        "Update failed",
+      );
+    }
   };
 
   return (
@@ -168,14 +192,12 @@ export function AdminManagers() {
                   Edit
                 </Button>
                 <Button
-                  variant="danger"
+                  variant={m.active ? "danger" : "outline"}
                   size="sm"
                   className="flex-1"
-                  onClick={() => {
-                    if (confirm(`Remove ${m.name}?`)) void deleteManager(m.id);
-                  }}
+                  onClick={() => void toggleActive(m)}
                 >
-                  Delete
+                  {m.active ? "Deactivate" : "Activate"}
                 </Button>
               </>
             }
@@ -183,7 +205,12 @@ export function AdminManagers() {
             <div className="flex items-start gap-3">
               <StudentPhoto student={{ name: m.name, photo: m.photo }} size="md" />
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-cerulean">{m.name}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-cerulean">{m.name}</p>
+                  <Badge tone={m.active ? "success" : "neutral"}>
+                    {m.active ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
                 <p className="break-all text-sm text-mist">{m.email}</p>
                 <p className="text-sm text-mist">
                   Branch: {getBranch(m.branchId)?.name ?? "—"}
@@ -226,7 +253,12 @@ export function AdminManagers() {
                     <div className="flex items-center gap-3">
                       <StudentPhoto student={{ name: m.name, photo: m.photo }} size="sm" />
                       <div className="min-w-0">
-                        <p className="font-medium text-cerulean">{m.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium text-cerulean">{m.name}</p>
+                          <Badge tone={m.active ? "success" : "neutral"}>
+                            {m.active ? "Active" : "Inactive"}
+                          </Badge>
+                        </div>
                         <p className="truncate text-sm text-mist">{m.email}</p>
                       </div>
                     </div>
@@ -239,14 +271,12 @@ export function AdminManagers() {
                       Edit
                     </Button>
                     <Button
-                      variant="danger"
+                      variant={m.active ? "danger" : "outline"}
                       size="sm"
                       className="ml-2"
-                      onClick={() => {
-                        if (confirm(`Remove ${m.name}?`)) void deleteManager(m.id);
-                      }}
+                      onClick={() => void toggleActive(m)}
                     >
-                      Delete
+                      {m.active ? "Deactivate" : "Activate"}
                     </Button>
                   </td>
                 </tr>

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 import { isAuthSyncPaused } from "../lib/authSync";
-import { fetchSessionProfile, hasAuthUser } from "../lib/session";
+import { fetchSessionProfile, hasAuthUser, isCurrentProfileInactive } from "../lib/session";
 import { useStore } from "../store/useStore";
 
 const INIT_TIMEOUT_MS = 8000;
@@ -32,6 +32,12 @@ export function useAppInit() {
       if (profile) {
         setSession(profile);
         if (reloadData) void loadAllData().catch(() => undefined);
+        return;
+      }
+
+      if (await isCurrentProfileInactive()) {
+        await supabase.auth.signOut();
+        setSession(null);
         return;
       }
 

@@ -27,6 +27,7 @@ export interface Manager {
   phone: string;
   photo?: string;
   address: string;
+  active: boolean;
   createdAt: string;
 }
 
@@ -38,6 +39,7 @@ export interface BranchUser {
   phone: string;
   photo?: string;
   address: string;
+  active: boolean;
   createdAt: string;
 }
 

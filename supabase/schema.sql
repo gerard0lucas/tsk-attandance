@@ -29,6 +29,7 @@ create table if not exists public.profiles (
   phone text not null default '',
   photo_url text,
   address text not null default '',
+  active boolean not null default true,
   created_at timestamptz not null default now()
 );
 

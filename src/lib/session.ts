@@ -6,6 +6,7 @@ const VALID_ROLES: UserRole[] = ["admin", "manager", "user"];
 
 function toSession(row: ProfileRow): Session | null {
   if (!VALID_ROLES.includes(row.role as UserRole)) return null;
+  if (row.active === false) return null;
   return {
     role: row.role as UserRole,
     userId: row.id,
@@ -18,7 +19,7 @@ function toSession(row: ProfileRow): Session | null {
 async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
   const withBranch = await supabase
     .from("profiles")
-    .select("id, email, name, role, branch_id, photo_url, created_at")
+    .select("id, email, name, role, branch_id, photo_url, active, created_at")
     .eq("id", userId)
     .single();
 
@@ -26,14 +27,26 @@ async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
     return withBranch.data as ProfileRow;
   }
 
-  if (withBranch.error?.message?.includes("branch_id")) {
+  const message = withBranch.error?.message ?? "";
+  if (/active/i.test(message)) {
+    const withoutActive = await supabase
+      .from("profiles")
+      .select("id, email, name, role, branch_id, photo_url, created_at")
+      .eq("id", userId)
+      .single();
+    if (!withoutActive.error && withoutActive.data) {
+      return { ...(withoutActive.data as ProfileRow), active: true };
+    }
+  }
+
+  if (message.includes("branch_id")) {
     const basic = await supabase
       .from("profiles")
       .select("id, email, name, role, photo_url, created_at")
       .eq("id", userId)
       .single();
     if (!basic.error && basic.data) {
-      return { ...(basic.data as ProfileRow), branch_id: null };
+      return { ...(basic.data as ProfileRow), branch_id: null, active: true };
     }
   }
 
@@ -60,6 +73,7 @@ export async function fetchSessionProfile(): Promise<Session | null> {
 
   const data = await fetchProfileRow(user.id);
   if (data) {
+    if (data.active === false) return null;
     const profile = toSession(data);
     if (profile) return profile;
   }
@@ -75,6 +89,16 @@ export async function fetchSessionProfile(): Promise<Session | null> {
   }
 
   return null;
+}
+
+/** True when the signed-in auth user has profiles.active = false. */
+export async function isCurrentProfileInactive(): Promise<boolean> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user) return false;
+  const row = await fetchProfileRow(session.user.id);
+  return row?.active === false;
 }
 
 export async function hasAuthUser(): Promise<boolean> {
