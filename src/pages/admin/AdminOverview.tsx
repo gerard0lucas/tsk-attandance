@@ -45,6 +45,7 @@ import { HorizontalPercentChart } from "../../components/dashboard/HorizontalPer
 import { WeeklyTrendChart } from "../../components/dashboard/WeeklyTrendChart";
 import { DonutChart } from "../../components/reports/DonutChart";
 import { RankingBarChart } from "../../components/reports/RankingBarChart";
+import { Button } from "../../components/ui/Button";
 import { Select } from "../../components/ui/Select";
 import type { AttendanceRecord, Student } from "../../types";
 
@@ -55,6 +56,8 @@ const PERIOD_OPTIONS: { value: DashboardAttendancePeriod; label: string }[] = [
   { value: "this_month", label: "This month" },
   { value: "last_month", label: "Last month" },
 ];
+
+const SCHOOL_PAGE_SIZE = 8;
 
 export function AdminOverview() {
   const branches = useStore((s) => s.branches);
@@ -67,6 +70,7 @@ export function AdminOverview() {
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [branchCounts, setBranchCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
+  const [schoolPage, setSchoolPage] = useState(1);
 
   const filters: DashboardFilters = useMemo(
     () => ({ branch: branchFilter, school: schoolFilter, class: classFilter }),
@@ -200,6 +204,17 @@ export function AdminOverview() {
         : schoolOverviewRows(students, periodRecords, filters),
     [branchFilter, students, periodRecords, filters],
   );
+
+  useEffect(() => {
+    setSchoolPage(1);
+  }, [branchFilter, schoolFilter, classFilter, period]);
+
+  const schoolTotalPages = Math.max(1, Math.ceil(schoolRows.length / SCHOOL_PAGE_SIZE));
+  const pagedSchoolRows = useMemo(() => {
+    const page = Math.min(schoolPage, schoolTotalPages);
+    const start = (page - 1) * SCHOOL_PAGE_SIZE;
+    return schoolRows.slice(start, start + SCHOOL_PAGE_SIZE);
+  }, [schoolRows, schoolPage, schoolTotalPages]);
 
   const classRows = useMemo(
     () =>
@@ -436,7 +451,7 @@ export function AdminOverview() {
           }
         >
           <AttendanceOverviewTable
-            rows={schoolRows}
+            rows={pagedSchoolRows}
             nameLabel="School"
             emptyLabel={
               branchFilter === "all"
@@ -444,6 +459,33 @@ export function AdminOverview() {
                 : "Add school names to student records."
             }
           />
+          {schoolRows.length > SCHOOL_PAGE_SIZE && (
+            <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={schoolPage <= 1}
+                onClick={() => setSchoolPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-mist">
+                Page {Math.min(schoolPage, schoolTotalPages)} of {schoolTotalPages}
+                {" "}
+                · {schoolRows.length} schools
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={schoolPage >= schoolTotalPages}
+                onClick={() =>
+                  setSchoolPage((p) => Math.min(schoolTotalPages, p + 1))
+                }
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </DashboardPanel>
 
         <DashboardPanel
