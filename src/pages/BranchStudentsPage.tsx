@@ -8,6 +8,7 @@ import { RollNumberInput } from "../components/ui/RollNumberInput";
 import { StudentSearchField } from "../components/StudentSearchField";
 import { Select } from "../components/ui/Select";
 import { Modal } from "../components/ui/Modal";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { Badge } from "../components/ui/Badge";
 import { PageHeader } from "../components/ui/PageHeader";
 import { FormActions, FormStack } from "../components/ui/FormStack";
@@ -43,6 +44,8 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
+  const [deleting, setDeleting] = useState<Student | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
@@ -67,9 +70,17 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     navigate(`${basePath}/students/${studentId}/qr`);
   };
 
-  const remove = (s: Student) => {
-    if (confirm(`Delete ${s.name}? This cannot be undone.`)) {
-      void deleteStudent(s.id).then(() => reload());
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeletingBusy(true);
+    try {
+      await deleteStudent(deleting.id);
+      setDeleting(null);
+      reload();
+    } catch {
+      /* store sets actionError */
+    } finally {
+      setDeletingBusy(false);
     }
   };
 
@@ -198,7 +209,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
                 compact
                 onEdit={() => openEdit(s)}
                 onQr={() => openQr(s.id)}
-                onDelete={() => remove(s)}
+                onDelete={() => setDeleting(s)}
               />
             }
           >
@@ -350,6 +361,38 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           </p>
         </FormStack>
       </Modal>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete student?"
+        description={
+          deleting ? (
+            <>
+              <p>
+                You are about to permanently delete{" "}
+                <span className="font-medium text-cerulean">{deleting.name}</span>
+                {deleting.rollNumber ? (
+                  <>
+                    {" "}
+                    (roll{" "}
+                    <span className="font-medium text-cerulean">
+                      {deleting.rollNumber}
+                    </span>
+                    )
+                  </>
+                ) : null}
+                .
+              </p>
+              <p className="mt-2 font-medium text-red-600">This cannot be undone.</p>
+            </>
+          ) : null
+        }
+        confirming={deletingBusy}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (!deletingBusy) setDeleting(null);
+        }}
+      />
     </div>
   );
 }

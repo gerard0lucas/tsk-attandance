@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "outline";
 
@@ -25,19 +25,19 @@ const sizes = {
   lg: "px-5 py-3 text-base rounded min-h-[48px]",
 };
 
-export function Button({
-  variant = "primary",
-  size = "md",
-  className = "",
-  children,
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      className={`touch-target inline-flex items-center justify-center gap-2 font-medium disabled:opacity-50 disabled:pointer-events-none ${variants[variant]} ${sizes[size]} ${className}`}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  function Button(
+    { variant = "primary", size = "md", className = "", children, ...props },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        className={`touch-target inline-flex items-center justify-center gap-2 font-medium disabled:opacity-50 disabled:pointer-events-none ${variants[variant]} ${sizes[size]} ${className}`}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  },
+);

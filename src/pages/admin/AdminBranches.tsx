@@ -12,6 +12,7 @@ import { validateBranchFields } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
 import { BranchCard } from "../../components/BranchCard";
 import { Button } from "../../components/ui/Button";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { Input } from "../../components/ui/Input";
 import { Modal } from "../../components/ui/Modal";
 import { PageHeader } from "../../components/ui/PageHeader";
@@ -95,6 +96,8 @@ export function AdminBranches() {
   const [view, setView] = useState<ViewMode>("grid");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Branch | null>(null);
+  const [deleting, setDeleting] = useState<Branch | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
   const [form, setForm] = useState<BranchInput>(emptyBranchInput());
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const { errors, clearField, clearAll, validate } = useFormValidation<
@@ -153,6 +156,19 @@ export function AdminBranches() {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeletingBusy(true);
+    try {
+      await deleteBranch(deleting.id);
+      setDeleting(null);
+    } catch {
+      /* store sets actionError */
+    } finally {
+      setDeletingBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
@@ -180,9 +196,7 @@ export function AdminBranches() {
               studentCount={studentCounts[b.id] ?? 0}
               view="grid"
               onEdit={() => openEdit(b)}
-              onDelete={() => {
-                if (confirm(`Delete ${branchListTitle(b)}?`)) void deleteBranch(b.id);
-              }}
+              onDelete={() => setDeleting(b)}
             />
           ))}
         </div>
@@ -195,13 +209,45 @@ export function AdminBranches() {
               studentCount={studentCounts[b.id] ?? 0}
               view="list"
               onEdit={() => openEdit(b)}
-              onDelete={() => {
-                if (confirm(`Delete ${branchListTitle(b)}?`)) void deleteBranch(b.id);
-              }}
+              onDelete={() => setDeleting(b)}
             />
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete branch?"
+        description={
+          deleting ? (
+            <>
+              <p>
+                You are about to permanently delete{" "}
+                <span className="font-medium text-cerulean">
+                  {branchListTitle(deleting)}
+                </span>
+                .
+              </p>
+              {(studentCounts[deleting.id] ?? 0) > 0 && (
+                <p className="mt-2">
+                  This branch has{" "}
+                  <span className="font-medium text-cerulean">
+                    {studentCounts[deleting.id]} active student
+                    {studentCounts[deleting.id] === 1 ? "" : "s"}
+                  </span>
+                  . Related records may be affected.
+                </p>
+              )}
+              <p className="mt-2 font-medium text-red-600">This cannot be undone.</p>
+            </>
+          ) : null
+        }
+        confirming={deletingBusy}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (!deletingBusy) setDeleting(null);
+        }}
+      />
 
       <Modal
         open={open}

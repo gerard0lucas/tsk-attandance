@@ -8,6 +8,7 @@ import { StudentSearchField } from "../../components/StudentSearchField";
 import { Select } from "../../components/ui/Select";
 import { Badge } from "../../components/ui/Badge";
 import { Modal } from "../../components/ui/Modal";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { Button } from "../../components/ui/Button";
 import { PageHeader } from "../../components/ui/PageHeader";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
@@ -50,6 +51,8 @@ export function AdminStudents() {
   const [formOpen, setFormOpen] = useState(false);
   const [viewing, setViewing] = useState<Student | null>(null);
   const [editing, setEditing] = useState<Student | null>(null);
+  const [deleting, setDeleting] = useState<Student | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
@@ -184,9 +187,17 @@ export function AdminStudents() {
     }
   };
 
-  const remove = (s: Student) => {
-    if (confirm(`Delete ${s.name}? This cannot be undone.`)) {
-      void deleteStudent(s.id).then(() => reload());
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeletingBusy(true);
+    try {
+      await deleteStudent(deleting.id);
+      setDeleting(null);
+      reload();
+    } catch {
+      /* store sets actionError */
+    } finally {
+      setDeletingBusy(false);
     }
   };
 
@@ -238,7 +249,7 @@ export function AdminStudents() {
             onView={() => openView(s)}
             onEdit={() => openEdit(s)}
             onQr={() => openQr(s.id)}
-            onDelete={() => remove(s)}
+            onDelete={() => setDeleting(s)}
           />
         ))}
         {!loading && students.length === 0 && (
@@ -271,7 +282,7 @@ export function AdminStudents() {
                   onView={() => openView(s)}
                   onEdit={() => openEdit(s)}
                   onQr={() => openQr(s.id)}
-                  onDelete={() => remove(s)}
+                  onDelete={() => setDeleting(s)}
                 />
               ))}
             </tbody>
@@ -412,6 +423,38 @@ export function AdminStudents() {
         onClose={closeView}
         student={viewing}
         branchName={viewing ? getBranch(viewing.branchId)?.name : undefined}
+      />
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete student?"
+        description={
+          deleting ? (
+            <>
+              <p>
+                You are about to permanently delete{" "}
+                <span className="font-medium text-cerulean">{deleting.name}</span>
+                {deleting.rollNumber ? (
+                  <>
+                    {" "}
+                    (roll{" "}
+                    <span className="font-medium text-cerulean">
+                      {deleting.rollNumber}
+                    </span>
+                    )
+                  </>
+                ) : null}
+                .
+              </p>
+              <p className="mt-2 font-medium text-red-600">This cannot be undone.</p>
+            </>
+          ) : null
+        }
+        confirming={deletingBusy}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (!deletingBusy) setDeleting(null);
+        }}
       />
     </div>
   );

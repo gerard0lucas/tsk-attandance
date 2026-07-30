@@ -34,6 +34,7 @@ import { Input } from "../components/ui/Input";
 import { RollNumberInput } from "../components/ui/RollNumberInput";
 import { Select } from "../components/ui/Select";
 import { Modal } from "../components/ui/Modal";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { FormActions, FormStack } from "../components/ui/FormStack";
 import { PhotoUpload } from "../components/PhotoUpload";
 import type { AttendanceRecord, Gender, Medium, Student } from "../types";
@@ -64,6 +65,8 @@ export function StudentProfilePage() {
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
   const [formOpen, setFormOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletingBusy, setDeletingBusy] = useState(false);
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
   const [studentClass, setStudentClass] = useState("");
@@ -223,9 +226,18 @@ export function StudentProfilePage() {
     }
   };
 
-  const remove = () => {
-    if (!confirm(`Delete ${student.name}? This cannot be undone.`)) return;
-    void deleteStudent(student.id).then(() => navigate(studentsBase));
+  const confirmDelete = async () => {
+    if (!student) return;
+    setDeletingBusy(true);
+    try {
+      await deleteStudent(student.id);
+      setDeleteOpen(false);
+      navigate(studentsBase);
+    } catch {
+      /* actionError */
+    } finally {
+      setDeletingBusy(false);
+    }
   };
 
   const editAttendance = async (dateKey: string) => {
@@ -307,7 +319,7 @@ export function StudentProfilePage() {
             compact
             onEdit={openEdit}
             onQr={() => navigate(`${studentsBase}/${student.id}/qr`)}
-            onDelete={remove}
+            onDelete={() => setDeleteOpen(true)}
           />
         </div>
       </div>
@@ -469,6 +481,36 @@ export function StudentProfilePage() {
           />
         </FormStack>
       </Modal>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete student?"
+        description={
+          <>
+            <p>
+              You are about to permanently delete{" "}
+              <span className="font-medium text-cerulean">{student.name}</span>
+              {student.rollNumber ? (
+                <>
+                  {" "}
+                  (roll{" "}
+                  <span className="font-medium text-cerulean">
+                    {student.rollNumber}
+                  </span>
+                  )
+                </>
+              ) : null}
+              .
+            </p>
+            <p className="mt-2 font-medium text-red-600">This cannot be undone.</p>
+          </>
+        }
+        confirming={deletingBusy}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (!deletingBusy) setDeleteOpen(false);
+        }}
+      />
     </div>
   );
 }
