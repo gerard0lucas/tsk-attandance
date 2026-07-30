@@ -42,6 +42,7 @@ import {
 import { BranchBarChart, DailyBarChart } from "../components/reports/GroupedBarChart";
 import { DonutChart } from "../components/reports/DonutChart";
 import { ReportChartCard } from "../components/reports/ReportChartCard";
+import { DateRangeFields } from "../components/DateRangeFields";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -54,6 +55,7 @@ const PERIOD_OPTIONS: { id: ReportPeriod; label: string }[] = [
   { id: "daily", label: "Daily" },
   { id: "weekly", label: "Weekly" },
   { id: "monthly", label: "Monthly" },
+  { id: "custom", label: "Custom" },
 ];
 
 export function ReportsPage() {
@@ -70,6 +72,8 @@ export function ReportsPage() {
   const [visibleMonth, setVisibleMonth] = useState(() => new Date());
   const [selectedDateKey, setSelectedDateKey] = useState(() => todayKey());
   const [period, setPeriod] = useState<ReportPeriod>("weekly");
+  const [customFrom, setCustomFrom] = useState(() => todayKey());
+  const [customTo, setCustomTo] = useState(() => todayKey());
   const [branchFilter, setBranchFilter] = useState<"all" | string>(scopedBranch);
   const [isPeriodPending, startPeriodTransition] = useTransition();
 
@@ -82,9 +86,20 @@ export function ReportsPage() {
   const [rosterLoading, setRosterLoading] = useState(false);
 
   const { from, to, label } = useMemo(
-    () => periodRange(period, selectedDateKey),
-    [period, selectedDateKey],
+    () => periodRange(period, selectedDateKey, { from: customFrom, to: customTo }),
+    [period, selectedDateKey, customFrom, customTo],
   );
+
+  const selectPeriod = (next: ReportPeriod) => {
+    startPeriodTransition(() => {
+      if (next === "custom" && period !== "custom") {
+        const current = periodRange(period, selectedDateKey);
+        setCustomFrom(current.from);
+        setCustomTo(current.to);
+      }
+      setPeriod(next);
+    });
+  };
 
   const gridDays = useMemo(() => calendarDaysForMonth(visibleMonth), [visibleMonth]);
   const gridFrom = toDateKey(gridDays[0]!);
@@ -347,13 +362,13 @@ export function ReportsPage() {
       />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="inline-flex w-full max-w-md rounded-full border border-morning bg-white p-1 shadow-sm">
+        <div className="inline-flex w-full max-w-xl flex-wrap rounded-full border border-morning bg-white p-1 shadow-sm">
           {PERIOD_OPTIONS.map(({ id, label: lbl }) => (
             <button
               key={id}
               type="button"
-              onClick={() => startPeriodTransition(() => setPeriod(id))}
-              className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              onClick={() => selectPeriod(id)}
+              className={`min-w-[4.5rem] flex-1 rounded-full px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
                 period === id
                   ? "bg-cerulean text-white shadow-sm"
                   : "text-mist hover:text-cerulean"
@@ -384,6 +399,21 @@ export function ReportsPage() {
           </p>
         )}
       </div>
+
+      {period === "custom" && (
+        <Card padding="sm">
+          <DateRangeFields
+            from={customFrom}
+            to={customTo}
+            onFromChange={(value) =>
+              startPeriodTransition(() => setCustomFrom(value || todayKey()))
+            }
+            onToChange={(value) =>
+              startPeriodTransition(() => setCustomTo(value || todayKey()))
+            }
+          />
+        </Card>
+      )}
 
       <p className="text-sm text-mist">
         {label} · {formatReportDate(from)}
@@ -453,6 +483,7 @@ export function ReportsPage() {
         )}
       </div>
 
+      {period !== "custom" && (
       <Card>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -531,6 +562,7 @@ export function ReportsPage() {
           })}
         </div>
       </Card>
+      )}
     </div>
   );
 }

@@ -10,17 +10,42 @@ import {
   subWeeks,
 } from "date-fns";
 
-export type ReportPeriod = "daily" | "weekly" | "monthly";
+export type ReportPeriod = "daily" | "weekly" | "monthly" | "custom";
 
 export type DashboardAttendancePeriod =
   | "today"
   | "this_week"
   | "last_week"
   | "this_month"
-  | "last_month";
+  | "last_month"
+  | "custom";
+
+export type DateRangeKeys = { from: string; to: string };
+
+/** Ensure from ≤ to for yyyy-MM-dd keys. */
+export function normalizeDateRange(from: string, to: string): DateRangeKeys {
+  if (!from || !to) {
+    const today = toDateKey(new Date());
+    return { from: from || today, to: to || today };
+  }
+  return from <= to ? { from, to } : { from: to, to: from };
+}
+
+export function formatDateRangeLabel(from: string, to: string): string {
+  const range = normalizeDateRange(from, to);
+  const start = parseDateKey(range.from);
+  const end = parseDateKey(range.to);
+  if (range.from === range.to) {
+    return format(start, "EEEE, MMM d, yyyy");
+  }
+  return `${format(start, "MMM d, yyyy")} – ${format(end, "MMM d, yyyy")}`;
+}
 
 /** Date range presets for the dashboard branch attendance panel */
-export function dashboardAttendanceRange(period: DashboardAttendancePeriod): {
+export function dashboardAttendanceRange(
+  period: DashboardAttendancePeriod,
+  custom?: DateRangeKeys,
+): {
   from: string;
   to: string;
   title: string;
@@ -28,6 +53,19 @@ export function dashboardAttendanceRange(period: DashboardAttendancePeriod): {
 } {
   const today = new Date();
   const todayK = toDateKey(today);
+
+  if (period === "custom") {
+    const range = normalizeDateRange(
+      custom?.from ?? todayK,
+      custom?.to ?? todayK,
+    );
+    return {
+      from: range.from,
+      to: range.to,
+      title: "Branch Attendance",
+      subtitle: `Custom · ${formatDateRangeLabel(range.from, range.to)}`,
+    };
+  }
 
   if (period === "today") {
     const label = format(today, "MMM d, yyyy");
@@ -96,7 +134,20 @@ export function toDateKey(d: Date): string {
 export function periodRange(
   period: ReportPeriod,
   dateKey: string,
+  custom?: DateRangeKeys,
 ): { from: string; to: string; label: string } {
+  if (period === "custom") {
+    const range = normalizeDateRange(
+      custom?.from ?? dateKey,
+      custom?.to ?? dateKey,
+    );
+    return {
+      from: range.from,
+      to: range.to,
+      label: formatDateRangeLabel(range.from, range.to),
+    };
+  }
+
   const d = parseDateKey(dateKey);
   if (period === "daily") {
     const k = toDateKey(d);

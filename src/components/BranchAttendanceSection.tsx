@@ -5,11 +5,13 @@ import {
   dashboardAttendanceRange,
   type DashboardAttendancePeriod,
 } from "../lib/reportRanges";
+import { todayKey } from "../lib/dates";
 import { branchListTitle } from "../lib/branch";
 import {
   countActiveStudentsByBranch,
   summarizeAttendanceByBranch,
 } from "../lib/db";
+import { DateRangeFields } from "./DateRangeFields";
 import { Card } from "./ui/Card";
 import { Select } from "./ui/Select";
 
@@ -19,6 +21,7 @@ const PERIOD_OPTIONS: { value: DashboardAttendancePeriod; label: string }[] = [
   { value: "last_week", label: "Last week" },
   { value: "this_month", label: "This month" },
   { value: "last_month", label: "Last month" },
+  { value: "custom", label: "Custom range" },
 ];
 
 type BranchAttendanceSectionProps = {
@@ -29,6 +32,8 @@ export function BranchAttendanceSection({ reportsPath = "/admin/reports" }: Bran
   const branches = useStore((s) => s.branches);
 
   const [period, setPeriod] = useState<DashboardAttendancePeriod>("today");
+  const [customFrom, setCustomFrom] = useState(() => todayKey());
+  const [customTo, setCustomTo] = useState(() => todayKey());
   const [branchCounts, setBranchCounts] = useState<Record<string, number>>({});
   const [attendanceByBranch, setAttendanceByBranch] = useState<
     Record<string, { checkIns: number; uniquePresent: number }>
@@ -36,9 +41,18 @@ export function BranchAttendanceSection({ reportsPath = "/admin/reports" }: Bran
   const [loading, setLoading] = useState(false);
 
   const { from, to, title, subtitle } = useMemo(
-    () => dashboardAttendanceRange(period),
-    [period],
+    () => dashboardAttendanceRange(period, { from: customFrom, to: customTo }),
+    [period, customFrom, customTo],
   );
+
+  const onPeriodChange = (next: DashboardAttendancePeriod) => {
+    if (next === "custom" && period !== "custom") {
+      const current = dashboardAttendanceRange(period);
+      setCustomFrom(current.from);
+      setCustomTo(current.to);
+    }
+    setPeriod(next);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +95,7 @@ export function BranchAttendanceSection({ reportsPath = "/admin/reports" }: Bran
     [branches, branchCounts, attendanceByBranch],
   );
 
-  const isToday = period === "today";
+  const isSingleDay = from === to;
 
   return (
     <Card>
@@ -96,12 +110,23 @@ export function BranchAttendanceSection({ reportsPath = "/admin/reports" }: Bran
         <Select
           label="View"
           value={period}
-          onChange={(e) => setPeriod(e.target.value as DashboardAttendancePeriod)}
+          onChange={(e) => onPeriodChange(e.target.value as DashboardAttendancePeriod)}
           options={PERIOD_OPTIONS}
           wrapperClassName="w-full shrink-0 sm:w-44"
           aria-label="Attendance period"
         />
       </div>
+
+      {period === "custom" && (
+        <div className="mb-4">
+          <DateRangeFields
+            from={customFrom}
+            to={customTo}
+            onFromChange={(value) => setCustomFrom(value || todayKey())}
+            onToChange={(value) => setCustomTo(value || todayKey())}
+          />
+        </div>
+      )}
 
       {branches.length === 0 ? (
         <p className="text-sm text-mist">No branches yet.</p>
@@ -119,7 +144,7 @@ export function BranchAttendanceSection({ reportsPath = "/admin/reports" }: Bran
                 </span>
               </span>
               <span className="shrink-0 font-medium text-honey">
-                {isToday
+                {isSingleDay
                   ? `${uniquePresent} present`
                   : `${uniquePresent} students · ${checkIns} check-ins`}
               </span>

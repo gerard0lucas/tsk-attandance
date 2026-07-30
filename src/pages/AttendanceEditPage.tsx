@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { differenceInCalendarDays } from "date-fns";
 import Swal from "sweetalert2";
 import { toastError, toastSuccess } from "../lib/toast";
 import { Eye } from "lucide-react";
@@ -11,6 +12,7 @@ import { Select } from "../components/ui/Select";
 import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
 import { StudentPhoto } from "../components/StudentPhoto";
+import { DateRangeFields } from "../components/DateRangeFields";
 import {
   TableWrap,
   tableActionsCell,
@@ -22,9 +24,16 @@ import { formatTime, todayKey } from "../lib/dates";
 import { formatReportDate } from "../lib/attendanceReport";
 import { CLASS_OPTIONS, compareRollNumber } from "../lib/student";
 import {
+  normalizeDateRange,
+  parseDateKey,
+  formatDateRangeLabel,
+} from "../lib/reportRanges";
+import {
   countPresentForBranchDate,
   listAttendanceForBranchDate,
+  listAttendanceInRange,
   listStudents,
+  listStudentsByBranch,
 } from "../lib/db";
 import type { AttendanceRecord, Student, UserRole } from "../types";
 
@@ -39,6 +48,7 @@ type StudentAttendanceRow = {
   student: Student;
   record?: AttendanceRecord;
   present: boolean;
+  daysPresent: number;
 };
 
 export function AttendanceEditPage() {
@@ -55,7 +65,10 @@ export function AttendanceEditPage() {
     () => session?.branchId ?? branches[0]?.id ?? "",
   );
   const branchId = isAdmin ? selectedBranch : session?.branchId;
+  const [dateMode, setDateMode] = useState<"single" | "range">("single");
   const [filterDate, setFilterDate] = useState(todayKey);
+  const [rangeFrom, setRangeFrom] = useState(todayKey);
+  const [rangeTo, setRangeTo] = useState(todayKey);
   const [classFilter, setClassFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
 
@@ -66,9 +79,20 @@ export function AttendanceEditPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const range = useMemo(
+    () => normalizeDateRange(rangeFrom, rangeTo),
+    [rangeFrom, rangeTo],
+  );
+  const isRange = dateMode === "range";
+  const rangeDayCount = useMemo(
+    () =>
+      differenceInCalendarDays(parseDateKey(range.to), parseDateKey(range.from)) + 1,
+    [range.from, range.to],
+  );
+
   useEffect(() => {
     setPage(1);
-  }, [branchId, filterDate, classFilter]);
+  }, [branchId, filterDate, classFilter, dateMode, range.from, range.to]);
 
   useEffect(() => {
     if (isAdmin && !selectedBranch && branches[0]?.id) {
@@ -88,25 +112,52 @@ export function AttendanceEditPage() {
     setLoadError(null);
     const studentClass = classFilter === "all" ? undefined : classFilter;
     try {
-      const [pageResult, dayAttendance, presentCount] = await Promise.all([
-        listStudents({
-          branchId,
-          activeOnly: true,
-          studentClass,
-          page,
-          pageSize: PAGE_SIZE,
-        }),
-        listAttendanceForBranchDate(branchId, filterDate),
-        countPresentForBranchDate({
-          branchId,
-          date: filterDate,
-          studentClass,
-        }),
-      ]);
-      setStudents(pageResult.students);
-      setTotalStudents(pageResult.total);
-      setAttendance(dayAttendance);
-      setPresentTotal(presentCount);
+      const pageResult = await listStudents({
+        branchId,
+        activeOnly: true,
+        studentClass,
+        page,
+        pageSize: PAGE_SIZE,
+      });
+
+      if (dateMode === "range") {
+        const [rangeAttendance, classRoster] = await Promise.all([
+          listAttendanceInRange({
+            from: range.from,
+            to: range.to,
+            branchId,
+          }),
+          studentClass
+            ? listStudentsByBranch(branchId, { activeOnly: true }).then((rows) =>
+                rows.filter((s) => s.class === studentClass),
+              )
+            : Promise.resolve(null),
+        ]);
+        const allowed = classRoster
+          ? new Set(classRoster.map((s) => s.id))
+          : null;
+        const scoped = allowed
+          ? rangeAttendance.filter((r) => allowed.has(r.studentId))
+          : rangeAttendance;
+        const presentIds = new Set(scoped.map((r) => r.studentId));
+        setStudents(pageResult.students);
+        setTotalStudents(pageResult.total);
+        setAttendance(scoped);
+        setPresentTotal(presentIds.size);
+      } else {
+        const [dayAttendance, presentCount] = await Promise.all([
+          listAttendanceForBranchDate(branchId, filterDate),
+          countPresentForBranchDate({
+            branchId,
+            date: filterDate,
+            studentClass,
+          }),
+        ]);
+        setStudents(pageResult.students);
+        setTotalStudents(pageResult.total);
+        setAttendance(dayAttendance);
+        setPresentTotal(presentCount);
+      }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load attendance.");
       setStudents([]);
@@ -116,16 +167,27 @@ export function AttendanceEditPage() {
     } finally {
       setLoading(false);
     }
-  }, [branchId, filterDate, classFilter, page]);
+  }, [branchId, filterDate, classFilter, page, dateMode, range.from, range.to]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
+  const daysPresentByStudent = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const record of attendance) {
+      map.set(record.studentId, (map.get(record.studentId) ?? 0) + 1);
+    }
+    return map;
+  }, [attendance]);
+
   const records = useMemo(() => {
     const byStudent = new Map<string, AttendanceRecord>();
     for (const record of attendance) {
-      byStudent.set(record.studentId, record);
+      const existing = byStudent.get(record.studentId);
+      if (!existing || record.date >= existing.date) {
+        byStudent.set(record.studentId, record);
+      }
     }
     return byStudent;
   }, [attendance]);
@@ -133,11 +195,17 @@ export function AttendanceEditPage() {
   const studentRows = useMemo<StudentAttendanceRow[]>(() => {
     return students
       .map((student) => {
+        const daysPresent = daysPresentByStudent.get(student.id) ?? 0;
         const record = records.get(student.id);
-        return { student, record, present: Boolean(record) };
+        return {
+          student,
+          record,
+          present: daysPresent > 0,
+          daysPresent,
+        };
       })
       .sort((a, b) => compareRollNumber(a.student.rollNumber, b.student.rollNumber));
-  }, [students, records]);
+  }, [students, records, daysPresentByStudent]);
 
   const absentTotal = Math.max(totalStudents - presentTotal, 0);
   const totalPages = Math.max(1, Math.ceil(totalStudents / PAGE_SIZE));
@@ -147,7 +215,7 @@ export function AttendanceEditPage() {
   };
 
   const markPresent = async (student: Student) => {
-    if (!session) return;
+    if (!session || isRange) return;
     const res = await markAttendanceForDate(student.id, filterDate, session.userId, student);
     if (res.ok) {
       toastSuccess(`${student.name} · ${formatReportDate(filterDate)}`, "Marked present");
@@ -167,6 +235,7 @@ export function AttendanceEditPage() {
   };
 
   const markAbsent = async (record: AttendanceRecord, studentName: string) => {
+    if (isRange) return;
     const result = await Swal.fire({
       title: "Mark absent?",
       text: `Mark ${studentName} absent for ${formatReportDate(filterDate)}?`,
@@ -202,11 +271,24 @@ export function AttendanceEditPage() {
   }
 
   const branchLabel = getBranch(branchId)?.name ?? "Branch";
-  const dateLabel = formatReportDate(filterDate);
+  const dateLabel = isRange
+    ? formatDateRangeLabel(range.from, range.to)
+    : formatReportDate(filterDate);
   const emptyMessage =
     classFilter !== "all"
       ? `No active students in class ${classFilter}.`
       : "No active students in this branch.";
+
+  const switchToRange = () => {
+    setRangeFrom(filterDate);
+    setRangeTo(filterDate);
+    setDateMode("range");
+  };
+
+  const switchToSingle = () => {
+    setFilterDate(range.to || todayKey());
+    setDateMode("single");
+  };
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -229,12 +311,18 @@ export function AttendanceEditPage() {
               options={branches.map((b) => ({ value: b.id, label: b.name }))}
             />
           )}
-          <Input
-            label="Attendance date"
-            type="date"
-            value={filterDate}
-            max={todayKey()}
-            onChange={(e) => setFilterDate(e.target.value)}
+          <Select
+            label="Date mode"
+            value={dateMode}
+            onChange={(e) => {
+              const next = e.target.value as "single" | "range";
+              if (next === "range") switchToRange();
+              else switchToSingle();
+            }}
+            options={[
+              { value: "single", label: "Single day" },
+              { value: "range", label: "Date range" },
+            ]}
           />
           <Select
             label="Class"
@@ -246,24 +334,51 @@ export function AttendanceEditPage() {
             ]}
           />
         </div>
+
+        <div className="mt-4">
+          {isRange ? (
+            <DateRangeFields
+              from={rangeFrom}
+              to={rangeTo}
+              onFromChange={(value) => setRangeFrom(value || todayKey())}
+              onToChange={(value) => setRangeTo(value || todayKey())}
+            />
+          ) : (
+            <Input
+              label="Attendance date"
+              type="date"
+              value={filterDate}
+              max={todayKey()}
+              onChange={(e) => setFilterDate(e.target.value)}
+              wrapperClassName="max-w-xs"
+            />
+          )}
+        </div>
+
         <div className="mt-4 flex flex-wrap gap-2 border-t border-morning pt-4 text-sm">
           <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
             {totalStudents} students
           </span>
           <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
-            {presentTotal} present
+            {presentTotal} {isRange ? "attended" : "present"}
           </span>
           <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
-            {absentTotal} absent
+            {absentTotal} {isRange ? "none" : "absent"}
           </span>
           <span className="text-mist">{dateLabel}</span>
           {loading && <span className="text-mist">Loading…</span>}
         </div>
+        {isRange && (
+          <p className="mt-2 text-xs text-mist">
+            Range view shows days present out of {rangeDayCount}. Switch to single day to mark
+            present or absent.
+          </p>
+        )}
         {loadError && <p className="mt-2 text-sm text-red-600">{loadError}</p>}
       </Card>
 
       <div className="space-y-3 md:hidden">
-        {studentRows.map(({ student, record, present }) => (
+        {studentRows.map(({ student, record, present, daysPresent }) => (
           <CardRow
             key={student.id}
             actions={
@@ -277,24 +392,25 @@ export function AttendanceEditPage() {
                   <Eye className="h-4 w-4" aria-hidden />
                   Profile
                 </Button>
-                {present && record ? (
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => void markAbsent(record, student.name)}
-                  >
-                    Absent
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="w-full"
-                    onClick={() => void markPresent(student)}
-                  >
-                    Present
-                  </Button>
-                )}
+                {!isRange &&
+                  (present && record ? (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => void markAbsent(record, student.name)}
+                    >
+                      Absent
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={() => void markPresent(student)}
+                    >
+                      Present
+                    </Button>
+                  ))}
               </div>
             }
           >
@@ -305,13 +421,17 @@ export function AttendanceEditPage() {
                 <p className="text-sm text-mist">
                   Roll {student.rollNumber} · Class {student.class}
                 </p>
-                {present && record ? (
+                {present && record && !isRange ? (
                   <p className="mt-1 text-xs text-mist">
                     {formatTime(record.markedAt)} · {getMarkedByName(record.markedById)}
                   </p>
                 ) : null}
                 <div className="mt-2">
-                  {present ? (
+                  {isRange ? (
+                    <Badge tone={daysPresent > 0 ? "success" : "neutral"}>
+                      {daysPresent}/{rangeDayCount} days
+                    </Badge>
+                  ) : present ? (
                     <Badge tone="success">Present</Badge>
                   ) : (
                     <Badge tone="neutral">Absent</Badge>
@@ -335,12 +455,12 @@ export function AttendanceEditPage() {
                 <th className={tableHeadCell}>Roll</th>
                 <th className={tableHeadCell}>Class</th>
                 <th className={tableHeadCell}>Status</th>
-                <th className={tableHeadCell}>Checked in</th>
+                <th className={tableHeadCell}>{isRange ? "Last check-in" : "Checked in"}</th>
                 <th className={tableHeadCell}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {studentRows.map(({ student, record, present }) => (
+              {studentRows.map(({ student, record, present, daysPresent }) => (
                 <tr key={student.id} className="border-b border-morning last:border-0">
                   <td className={tableCell}>
                     <div className="flex items-center gap-3">
@@ -351,7 +471,11 @@ export function AttendanceEditPage() {
                   <td className={tableCellMuted}>{student.rollNumber}</td>
                   <td className={tableCell}>{student.class}</td>
                   <td className={tableCell}>
-                    {present ? (
+                    {isRange ? (
+                      <Badge tone={daysPresent > 0 ? "success" : "neutral"}>
+                        {daysPresent}/{rangeDayCount} days
+                      </Badge>
+                    ) : present ? (
                       <Badge tone="success">Present</Badge>
                     ) : (
                       <Badge tone="neutral">Absent</Badge>
@@ -359,7 +483,7 @@ export function AttendanceEditPage() {
                   </td>
                   <td className={tableCellMuted}>
                     {present && record
-                      ? `${formatTime(record.markedAt)} · ${getMarkedByName(record.markedById)}`
+                      ? `${isRange ? `${formatReportDate(record.date)} · ` : ""}${formatTime(record.markedAt)} · ${getMarkedByName(record.markedById)}`
                       : "—"}
                   </td>
                   <td className={`${tableActionsCell} text-left`}>
@@ -373,24 +497,25 @@ export function AttendanceEditPage() {
                         <Eye className="h-3.5 w-3.5" aria-hidden />
                         Profile
                       </Button>
-                      {present && record ? (
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          className="w-[5.5rem] shrink-0"
-                          onClick={() => void markAbsent(record, student.name)}
-                        >
-                          Absent
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="w-[5.5rem] shrink-0"
-                          onClick={() => void markPresent(student)}
-                        >
-                          Present
-                        </Button>
-                      )}
+                      {!isRange &&
+                        (present && record ? (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            className="w-[5.5rem] shrink-0"
+                            onClick={() => void markAbsent(record, student.name)}
+                          >
+                            Absent
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="w-[5.5rem] shrink-0"
+                            onClick={() => void markPresent(student)}
+                          >
+                            Present
+                          </Button>
+                        ))}
                     </div>
                   </td>
                 </tr>

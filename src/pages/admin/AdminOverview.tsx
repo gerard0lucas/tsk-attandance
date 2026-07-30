@@ -45,9 +45,11 @@ import { HorizontalPercentChart } from "../../components/dashboard/HorizontalPer
 import { WeeklyTrendChart } from "../../components/dashboard/WeeklyTrendChart";
 import { DonutChart } from "../../components/reports/DonutChart";
 import { RankingBarChart } from "../../components/reports/RankingBarChart";
+import { DateRangeFields } from "../../components/DateRangeFields";
 import { Button } from "../../components/ui/Button";
 import { Select } from "../../components/ui/Select";
 import type { AttendanceRecord, Student } from "../../types";
+import { todayKey } from "../../lib/dates";
 
 const PERIOD_OPTIONS: { value: DashboardAttendancePeriod; label: string }[] = [
   { value: "today", label: "Today" },
@@ -55,6 +57,7 @@ const PERIOD_OPTIONS: { value: DashboardAttendancePeriod; label: string }[] = [
   { value: "last_week", label: "Last week" },
   { value: "this_month", label: "This month" },
   { value: "last_month", label: "Last month" },
+  { value: "custom", label: "Custom range" },
 ];
 
 const SCHOOL_PAGE_SIZE = 8;
@@ -63,6 +66,8 @@ export function AdminOverview() {
   const branches = useStore((s) => s.branches);
 
   const [period, setPeriod] = useState<DashboardAttendancePeriod>("today");
+  const [customFrom, setCustomFrom] = useState(() => todayKey());
+  const [customTo, setCustomTo] = useState(() => todayKey());
   const [branchFilter, setBranchFilter] = useState<"all" | string>("all");
   const [schoolFilter, setSchoolFilter] = useState<"all" | string>("all");
   const [classFilter, setClassFilter] = useState<"all" | string>("all");
@@ -78,9 +83,18 @@ export function AdminOverview() {
   );
 
   const { from, to, subtitle } = useMemo(
-    () => dashboardAttendanceRange(period),
-    [period],
+    () => dashboardAttendanceRange(period, { from: customFrom, to: customTo }),
+    [period, customFrom, customTo],
   );
+
+  const onPeriodChange = (next: DashboardAttendancePeriod) => {
+    if (next === "custom" && period !== "custom") {
+      const current = dashboardAttendanceRange(period);
+      setCustomFrom(current.from);
+      setCustomTo(current.to);
+    }
+    setPeriod(next);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -329,7 +343,7 @@ export function AdminOverview() {
           <Select
             label="Period"
             value={period}
-            onChange={(e) => setPeriod(e.target.value as DashboardAttendancePeriod)}
+            onChange={(e) => onPeriodChange(e.target.value as DashboardAttendancePeriod)}
             options={PERIOD_OPTIONS}
           />
           <Select
@@ -370,6 +384,17 @@ export function AdminOverview() {
             ]}
           />
         </div>
+
+        {period === "custom" && (
+          <div className="mt-3">
+            <DateRangeFields
+              from={customFrom}
+              to={customTo}
+              onFromChange={(value) => setCustomFrom(value || todayKey())}
+              onToChange={(value) => setCustomTo(value || todayKey())}
+            />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
