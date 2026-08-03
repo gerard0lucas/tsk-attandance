@@ -49,7 +49,10 @@ export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function Qr
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  /** Last accepted QR payload — suppressed until it leaves the frame. */
   const lastScanRef = useRef("");
+  /** Consecutive "not found" frames before clearing lastScanRef (avoids flicker). */
+  const missCountRef = useRef(0);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
   const activeRef = useRef(false);
@@ -80,24 +83,34 @@ export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function Qr
       if (pausedRef.current) return;
 
       const text = decoded.trim();
-      if (!text || text === lastScanRef.current) return;
+      if (!text || text === lastScanRef.current) {
+        missCountRef.current = 0;
+        return;
+      }
 
       const payload = parseQrPayload(text);
+      missCountRef.current = 0;
+      lastScanRef.current = text;
+
       if (!payload) {
-        lastScanRef.current = text;
         onInvalidScan?.(text);
         return;
       }
 
-      lastScanRef.current = text;
       onScan({ sid: payload.sid, tok: payload.tok });
     },
     [onScan, onInvalidScan],
   );
 
-  /** Clear suppressed QR only after it leaves the frame (not on a timer). */
+  /**
+   * Clear suppressed QR only after several consecutive empty frames.
+   * A single miss is common with shaky hands / lighting and must not re-arm the same code.
+   */
   const handleNotFound = useCallback(() => {
-    if (pausedRef.current) return;
+    if (pausedRef.current || !lastScanRef.current) return;
+    missCountRef.current += 1;
+    if (missCountRef.current < 5) return;
+    missCountRef.current = 0;
     lastScanRef.current = "";
   }, []);
 
@@ -105,6 +118,7 @@ export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function Qr
     setError(null);
     setStarting(true);
     lastScanRef.current = "";
+    missCountRef.current = 0;
 
     const el = containerRef.current;
     if (!el) {
