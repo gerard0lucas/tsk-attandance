@@ -47,7 +47,6 @@ export function ScanPage() {
   const markAttendance = useStore((s) => s.markAttendance);
 
   const [manualId, setManualId] = useState("");
-  const [cooldown, setCooldown] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
   const { errors, clearField, validate } = useFormValidation<"manualId">();
 
@@ -73,7 +72,8 @@ export function ScanPage() {
       return;
     }
 
-    // Keep camera running; `paused` blocks further scans while the dialog is open
+    // Keep camera running; `paused` blocks further scans while the dialog is open.
+    // Same QR stays suppressed until it leaves the frame (see QrScanner).
     const branchName = getBranch(student.branchId)?.name;
     let alreadyPresent = false;
     try {
@@ -95,13 +95,7 @@ export function ScanPage() {
       allowOutsideClick: false,
     });
 
-    const resumeScanningSoon = () => {
-      setCooldown(true);
-      window.setTimeout(() => setCooldown(false), 300);
-    };
-
     if (alreadyPresent || !result.isConfirmed || !session) {
-      resumeScanningSoon();
       return;
     }
 
@@ -118,8 +112,6 @@ export function ScanPage() {
         e instanceof Error ? e.message : "Could not mark attendance.",
         "Could not mark",
       );
-    } finally {
-      resumeScanningSoon();
     }
   };
 
@@ -180,7 +172,7 @@ export function ScanPage() {
 
       <Card className="!p-3 sm:!p-5">
         <QrScanner
-          paused={cooldown || lookingUp}
+          paused={lookingUp}
           onScan={({ sid, tok }) => handleScan(sid, tok)}
           onInvalidScan={() =>
             toastError("Not a valid student QR from this app.", "Invalid QR")

@@ -54,12 +54,6 @@ export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function Qr
   pausedRef.current = paused;
   const activeRef = useRef(false);
 
-  useEffect(() => {
-    if (!paused) {
-      lastScanRef.current = "";
-    }
-  }, [paused]);
-
   const stop = useCallback(async () => {
     const scanner = scannerRef.current;
     scannerRef.current = null;
@@ -90,6 +84,7 @@ export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function Qr
 
       const payload = parseQrPayload(text);
       if (!payload) {
+        lastScanRef.current = text;
         onInvalidScan?.(text);
         return;
       }
@@ -99,6 +94,12 @@ export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function Qr
     },
     [onScan, onInvalidScan],
   );
+
+  /** Clear suppressed QR only after it leaves the frame (not on a timer). */
+  const handleNotFound = useCallback(() => {
+    if (pausedRef.current) return;
+    lastScanRef.current = "";
+  }, []);
 
   const start = async () => {
     setError(null);
@@ -148,7 +149,7 @@ export const QrScanner = forwardRef<QrScannerHandle, QrScannerProps>(function Qr
               disableFlip: false,
             },
             handleDecoded,
-            () => {},
+            handleNotFound,
           );
           started = true;
           break;
