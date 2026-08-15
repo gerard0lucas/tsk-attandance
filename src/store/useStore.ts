@@ -12,7 +12,16 @@ import { branchAccessError } from "../lib/branchAccess";
 import { pauseAuthSync, resumeAuthSync } from "../lib/authSync";
 import { todayKey } from "../lib/dates";
 import { isSupabaseConfigured } from "../lib/supabase";
+import { toUserMessage } from "../lib/userError";
 import * as db from "../lib/db";
+
+function rawErrorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return "";
+}
 
 interface AppState {
   ready: boolean;
@@ -141,17 +150,13 @@ interface AppState {
 function requireSupabase(): void {
   if (!isSupabaseConfigured()) {
     throw new Error(
-      "Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to a .env file.",
+      "The app isn't set up correctly. Please contact an administrator.",
     );
   }
 }
 
 function getActionErrorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (e && typeof e === "object" && "message" in e) {
-    return String((e as { message: unknown }).message);
-  }
-  return "Something went wrong.";
+  return toUserMessage(e);
 }
 
 async function runAction<T>(fn: () => Promise<T>): Promise<T> {
@@ -194,7 +199,7 @@ export const useStore = create<AppState>()((set, get) => ({
     } catch (e) {
       set({
         dataLoading: false,
-        actionError: e instanceof Error ? e.message : "Failed to load data.",
+        actionError: toUserMessage(e, "Couldn't load data. Please try again."),
       });
       throw e;
     } finally {
@@ -206,7 +211,7 @@ export const useStore = create<AppState>()((set, get) => ({
     if (!isSupabaseConfigured()) {
       return {
         ok: false,
-        message: "Supabase is not configured. Add your project keys to .env.",
+        message: "The app isn't set up correctly. Please contact an administrator.",
       };
     }
     pauseAuthSync();
@@ -233,7 +238,7 @@ export const useStore = create<AppState>()((set, get) => ({
         return {
           ok: false,
           message:
-            "Signed in but no profile found. In Supabase, add a row in profiles with your user id and role (admin, manager, or user).",
+            "Your account isn't fully set up. Please contact an administrator.",
         };
       }
 
@@ -243,7 +248,7 @@ export const useStore = create<AppState>()((set, get) => ({
     } catch (e) {
       return {
         ok: false,
-        message: e instanceof Error ? e.message : "Sign in failed.",
+        message: toUserMessage(e, "Couldn't sign in. Please try again."),
       };
     } finally {
       resumeAuthSync();
@@ -409,7 +414,7 @@ export const useStore = create<AppState>()((set, get) => ({
       const session = get().session;
       const student = studentHint ?? (await db.getStudentById(studentId));
       if (!student) return { ok: false, message: "Student not found." };
-      if (!student.active) return { ok: false, message: "Student account is inactive." };
+      if (!student.active) return { ok: false, message: "This student is inactive and can't be marked." };
 
       const branchErr = branchAccessError(session, student.branchId);
       if (branchErr) return { ok: false, message: branchErr };
@@ -429,11 +434,11 @@ export const useStore = create<AppState>()((set, get) => ({
         });
         return { ok: true, message: `${student.name} marked present.`, record };
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Could not mark attendance.";
-        if (msg.includes("duplicate") || msg.includes("unique")) {
+        const msg = toUserMessage(e, "Couldn't mark attendance. Please try again.");
+        if (/already|duplicate|unique/i.test(rawErrorText(e))) {
           return { ok: false, message: "Already marked present today." };
         }
-        throw e;
+        return { ok: false, message: msg };
       }
     }),
 
@@ -442,7 +447,7 @@ export const useStore = create<AppState>()((set, get) => ({
       const session = get().session;
       const student = studentHint ?? (await db.getStudentById(studentId));
       if (!student) return { ok: false, message: "Student not found." };
-      if (!student.active) return { ok: false, message: "Student is inactive." };
+      if (!student.active) return { ok: false, message: "This student is inactive and can't be marked." };
 
       const branchErr = branchAccessError(session, student.branchId);
       if (branchErr) return { ok: false, message: branchErr };
@@ -456,8 +461,8 @@ export const useStore = create<AppState>()((set, get) => ({
         });
         return { ok: true, message: `${student.name} marked for ${date}.`, record };
       } catch (e) {
-        const msg = e instanceof Error ? e.message : "Could not mark attendance.";
-        if (msg.includes("duplicate") || msg.includes("unique")) {
+        const msg = toUserMessage(e, "Couldn't mark attendance. Please try again.");
+        if (/already|duplicate|unique/i.test(rawErrorText(e))) {
           return { ok: false, message: "Already marked present for this date." };
         }
         return { ok: false, message: msg };

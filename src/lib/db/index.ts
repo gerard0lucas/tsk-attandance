@@ -36,7 +36,7 @@ export async function signIn(email: string, password: string): Promise<{ ok: tru
     email: normalizeEmail(email),
     password: password.trim(),
   });
-  if (error) return { ok: false, message: error.message };
+  if (error) return { ok: false, message: getDbErrorMessage(error) };
   return { ok: true };
 }
 
@@ -464,10 +464,10 @@ async function createStaffAccount(input: {
     if (error) {
       if (isRateLimitError(error.message)) {
         throw new Error(
-          "Too many sign-up attempts. Wait about an hour, or add the user in Supabase Dashboard.",
+          "Too many attempts. Please wait a while and try again.",
         );
       }
-      throw error;
+      throw new Error(getDbErrorMessage(error));
     }
     if (!signUpData.user) throw new Error("Could not create account.");
 
@@ -685,7 +685,7 @@ async function setProfileActive(
   if (error) throw new Error(getDbErrorMessage(error));
   if (!data?.length) {
     throw new Error(
-      `Could not update this ${label}. You may not have permission, or it is already ${active ? "active" : "inactive"}.`,
+      `Couldn't update this ${label}. You may not have permission, or it is already ${active ? "active" : "inactive"}.`,
     );
   }
 }

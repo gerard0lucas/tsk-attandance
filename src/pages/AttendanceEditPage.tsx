@@ -34,6 +34,7 @@ import {
   listStudentsByBranch,
 } from "../lib/db";
 import { StudentSearchField } from "../components/StudentSearchField";
+import { toUserMessage } from "../lib/userError";
 import type { AttendanceRecord, Student, UserRole } from "../types";
 
 const PAGE_SIZE = 50;
@@ -194,7 +195,7 @@ export function AttendanceEditPage() {
       setStudents(roster);
       setAttendance(dayOrRangeAttendance);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load attendance.");
+      setLoadError(toUserMessage(e, "Couldn't load attendance. Please try again."));
       setStudents([]);
       setAttendance([]);
     } finally {
@@ -297,7 +298,7 @@ export function AttendanceEditPage() {
         void reload();
       }
     } else {
-      toastError(res.message, "Could not mark");
+      toastError(res.message, "Couldn't mark");
       void reload();
     }
   };
@@ -320,8 +321,8 @@ export function AttendanceEditPage() {
       toastSuccess("Attendance updated.", "Marked absent");
     } catch (e) {
       toastError(
-        e instanceof Error ? e.message : "Could not remove attendance.",
-        "Could not remove",
+        toUserMessage(e, "Couldn't update attendance. Please try again."),
+        "Couldn't remove",
       );
       void reload();
     }

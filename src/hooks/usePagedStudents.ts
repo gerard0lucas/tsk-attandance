@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listAttendanceForBranchDate, listStudents } from "../lib/db";
 import { todayKey } from "../lib/dates";
+import { toUserMessage } from "../lib/userError";
 import type { Student } from "../types";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -52,7 +53,7 @@ export function usePagedStudents(opts: {
           setPresentTodayIds(new Set(dayAttendance.map((a) => a.studentId)));
         } catch (e) {
           if (!cancelled) {
-            setError(e instanceof Error ? e.message : "Failed to load students.");
+            setError(toUserMessage(e, "Couldn't load students. Please try again."));
             setStudents([]);
             setTotal(0);
           }

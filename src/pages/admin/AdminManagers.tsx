@@ -21,6 +21,7 @@ import { FormActions, FormStack } from "../../components/ui/FormStack";
 import { validateUserFields } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
 import { toastError, toastSuccess } from "../../lib/toast";
+import { toUserMessage } from "../../lib/userError";
 import type { Manager } from "../../types";
 
 export function AdminManagers() {
@@ -145,7 +146,7 @@ export function AdminManagers() {
       );
     } catch (e) {
       toastError(
-        e instanceof Error ? e.message : "Could not update status.",
+        toUserMessage(e, "Couldn't update status. Please try again."),
         "Update failed",
       );
     }

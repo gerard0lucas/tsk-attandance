@@ -271,7 +271,7 @@ export function StudentProfilePage() {
         toastSuccess("Marked absent.", "Updated");
         await reloadAttendance(student.id, monthRange.from, monthRange.to);
       } catch {
-        toastError("Failed to remove attendance.", "Could not update");
+        toastError("Couldn't remove attendance. Please try again.", "Couldn't update");
       }
       return;
     }
@@ -294,7 +294,7 @@ export function StudentProfilePage() {
       toastSuccess(res.message, "Updated");
       await reloadAttendance(student.id, monthRange.from, monthRange.to);
     } else {
-      toastError(res.message, "Could not update");
+      toastError(res.message, "Couldn't update");
     }
   };
 

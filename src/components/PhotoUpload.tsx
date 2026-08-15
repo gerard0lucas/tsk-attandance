@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { readStudentPhoto } from "../lib/photo";
+import { toUserMessage } from "../lib/userError";
 import { StudentPhoto } from "./StudentPhoto";
 import { Button } from "./ui/Button";
 
@@ -22,7 +23,7 @@ export function PhotoUpload({
       const dataUrl = await readStudentPhoto(file);
       onChange(dataUrl);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load image.");
+      setError(toUserMessage(e, "Couldn't load image. Please try another file."));
     }
   };
 

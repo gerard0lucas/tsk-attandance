@@ -18,6 +18,7 @@ import {
   tableHeadCell,
 } from "../../components/ui/TableWrap";
 import { FormActions, FormStack } from "../../components/ui/FormStack";
+import { toUserMessage } from "../../lib/userError";
 import { validateUserFields } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
 import { toastError, toastSuccess } from "../../lib/toast";
@@ -134,7 +135,7 @@ export function AdminUsers() {
       );
     } catch (e) {
       toastError(
-        e instanceof Error ? e.message : "Could not update status.",
+        toUserMessage(e, "Couldn't update status. Please try again."),
         "Update failed",
       );
     }

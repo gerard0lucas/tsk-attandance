@@ -27,10 +27,8 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="max-w-lg rounded border border-morning bg-white p-6 shadow-sm">
             <h1 className="text-lg font-semibold text-cerulean">Something went wrong</h1>
             <p className="mt-2 text-sm text-mist">
-              The app hit an error. Try refreshing the page.
-            </p>
-            <p className="mt-3 rounded bg-morning/30 px-3 py-2 font-mono text-xs text-cerulean">
-              {this.state.error.message}
+              The app hit an unexpected error. Try refreshing the page. If it keeps
+              happening, contact an administrator.
             </p>
             <Button className="mt-4" onClick={() => window.location.reload()}>
               Refresh

@@ -12,6 +12,7 @@ import { useFormValidation } from "../hooks/useFormValidation";
 import { RollNumberInput } from "../components/ui/RollNumberInput";
 import { getAttendanceForStudentDate, getStudentByQr, getStudentByRoll } from "../lib/db";
 import { todayKey } from "../lib/dates";
+import { toUserMessage } from "../lib/userError";
 import type { Student } from "../types";
 
 function studentAlertHtml(student: Student, branchName?: string, alreadyPresent?: boolean) {
@@ -105,12 +106,12 @@ export function ScanPage() {
       if (res.ok) {
         toastSuccess(res.message, "Present!");
       } else {
-        toastError(res.message, "Could not mark");
+        toastError(res.message, "Couldn't mark");
       }
     } catch (e) {
       toastError(
-        e instanceof Error ? e.message : "Could not mark attendance.",
-        "Could not mark",
+        toUserMessage(e, "Couldn't mark attendance. Please try again."),
+        "Couldn't mark",
       );
     }
   };
@@ -123,7 +124,10 @@ export function ScanPage() {
         const student = await getStudentByQr(sid, tok, scopeBranchId);
         await showStudentAlert(student);
       } catch (e) {
-        toastError(e instanceof Error ? e.message : "Lookup failed.", "Could not look up");
+        toastError(
+          toUserMessage(e, "Couldn't find that student. Please try again."),
+          "Couldn't look up",
+        );
       } finally {
         setLookingUp(false);
       }
@@ -152,7 +156,10 @@ export function ScanPage() {
             : "No student found with this roll number.",
         );
       } catch (e) {
-        toastError(e instanceof Error ? e.message : "Lookup failed.", "Could not look up");
+        toastError(
+          toUserMessage(e, "Couldn't find that student. Please try again."),
+          "Couldn't look up",
+        );
       } finally {
         setLookingUp(false);
       }

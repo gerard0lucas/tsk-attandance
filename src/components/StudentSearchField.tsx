@@ -7,6 +7,7 @@ import { Button } from "./ui/Button";
 import { Modal } from "./ui/Modal";
 import { getStudentByQr } from "../lib/db";
 import { sanitizeRollNumber } from "../lib/validation";
+import { toUserMessage } from "../lib/userError";
 
 const LazyQrScanner = lazy(() =>
   import("./QrScanner").then((m) => ({ default: m.QrScanner })),
@@ -42,7 +43,7 @@ export function StudentSearchField({
     try {
       const student = await getStudentByQr(sid, tok, branchId);
       if (!student) {
-        toastError("This QR is not linked to a student in scope.", "Student not found");
+        toastError("This QR isn't linked to a student you can access.", "Student not found");
         return;
       }
 
@@ -53,7 +54,10 @@ export function StudentSearchField({
       onChange(sanitizeRollNumber(student.rollNumber) || student.name);
       setScanOpen(false);
     } catch (e) {
-      toastError(e instanceof Error ? e.message : "Lookup failed.", "Could not look up");
+      toastError(
+        toUserMessage(e, "Couldn't find that student. Please try again."),
+        "Couldn't look up",
+      );
     }
   };
 
