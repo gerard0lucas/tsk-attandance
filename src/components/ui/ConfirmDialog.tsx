@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
+import { lockBodyScroll, unlockBodyScroll } from "../../lib/bodyScrollLock";
 import { Button } from "./Button";
 import { FormActions } from "./FormStack";
 
@@ -47,18 +48,15 @@ export function ConfirmDialog({
 
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    lockBodyScroll();
+    return () => unlockBodyScroll();
   }, [open]);
 
   if (!open) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4"
       role="presentation"
     >
       <button

@@ -99,7 +99,8 @@ export function MarkPresentRangeDialog({
       }
       setConfirmOpen(false);
       onChanged?.();
-      close();
+      // Defer parent close so confirm unlock runs before the range modal unlocks.
+      window.setTimeout(() => onClose(), 0);
     } finally {
       setBusy(false);
     }
