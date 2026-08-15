@@ -326,7 +326,9 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
             <span className="text-mist">
               {mode === "individual"
                 ? "Enter a roll number to find the student."
-                : "Select filters above to preview how many QR codes will download."}
+                : mode === "class" && classFilter
+                  ? `Class ${classFilter} currently has no students in this branch.`
+                  : "Select filters above to preview how many QR codes will download."}
             </span>
           ) : (
             <span>
