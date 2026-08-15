@@ -22,27 +22,31 @@ import {
 } from "../components/ui/TableWrap";
 import { formatTime, todayKey } from "../lib/dates";
 import { formatReportDate } from "../lib/attendanceReport";
-import { CLASS_OPTIONS, compareRollNumber } from "../lib/student";
+import { CLASS_OPTIONS, compareRollNumber, filterStudents } from "../lib/student";
 import {
   normalizeDateRange,
   parseDateKey,
   formatDateRangeLabel,
 } from "../lib/reportRanges";
 import {
-  countPresentForBranchDate,
   listAttendanceForBranchDate,
   listAttendanceInRange,
-  listStudents,
   listStudentsByBranch,
 } from "../lib/db";
+import { StudentSearchField } from "../components/StudentSearchField";
 import type { AttendanceRecord, Student, UserRole } from "../types";
 
 const PAGE_SIZE = 50;
 
-function studentProfilePath(role: UserRole | undefined, studentId: string): string {
-  const base = role === "admin" ? "/admin" : role === "user" ? "/user" : "/manager";
-  return `${base}/students/${studentId}`;
-}
+type StatusFilter = "all" | "present" | "absent";
+type SortOption =
+  | "roll-asc"
+  | "roll-desc"
+  | "name-asc"
+  | "name-desc"
+  | "class-asc"
+  | "present-first"
+  | "absent-first";
 
 type StudentAttendanceRow = {
   student: Student;
@@ -50,6 +54,73 @@ type StudentAttendanceRow = {
   present: boolean;
   daysPresent: number;
 };
+
+const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All statuses" },
+  { value: "present", label: "Present only" },
+  { value: "absent", label: "Absent only" },
+];
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "roll-asc", label: "Roll number (low → high)" },
+  { value: "roll-desc", label: "Roll number (high → low)" },
+  { value: "name-asc", label: "Name (A→Z)" },
+  { value: "name-desc", label: "Name (Z→A)" },
+  { value: "class-asc", label: "Class (1→12)" },
+  { value: "present-first", label: "Present first" },
+  { value: "absent-first", label: "Absent first" },
+];
+
+function compareClass(a: string, b: string): number {
+  const na = Number.parseInt(a, 10);
+  const nb = Number.parseInt(b, 10);
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function sortStudentRows(
+  rows: StudentAttendanceRow[],
+  sort: SortOption,
+): StudentAttendanceRow[] {
+  const sorted = [...rows];
+  sorted.sort((a, b) => {
+    switch (sort) {
+      case "roll-desc":
+        return compareRollNumber(b.student.rollNumber, a.student.rollNumber);
+      case "name-asc":
+        return a.student.name.localeCompare(b.student.name, undefined, {
+          sensitivity: "base",
+        });
+      case "name-desc":
+        return b.student.name.localeCompare(a.student.name, undefined, {
+          sensitivity: "base",
+        });
+      case "class-asc": {
+        const byClass = compareClass(a.student.class, b.student.class);
+        return byClass !== 0
+          ? byClass
+          : compareRollNumber(a.student.rollNumber, b.student.rollNumber);
+      }
+      case "present-first": {
+        if (a.present !== b.present) return a.present ? -1 : 1;
+        return compareRollNumber(a.student.rollNumber, b.student.rollNumber);
+      }
+      case "absent-first": {
+        if (a.present !== b.present) return a.present ? 1 : -1;
+        return compareRollNumber(a.student.rollNumber, b.student.rollNumber);
+      }
+      case "roll-asc":
+      default:
+        return compareRollNumber(a.student.rollNumber, b.student.rollNumber);
+    }
+  });
+  return sorted;
+}
+
+function studentProfilePath(role: UserRole | undefined, studentId: string): string {
+  const base = role === "admin" ? "/admin" : role === "user" ? "/user" : "/manager";
+  return `${base}/students/${studentId}`;
+}
 
 export function AttendanceEditPage() {
   const navigate = useNavigate();
@@ -70,11 +141,12 @@ export function AttendanceEditPage() {
   const [rangeFrom, setRangeFrom] = useState(todayKey);
   const [rangeTo, setRangeTo] = useState(todayKey);
   const [classFilter, setClassFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("roll-asc");
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
   const [students, setStudents] = useState<Student[]>([]);
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [presentTotal, setPresentTotal] = useState(0);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -92,7 +164,7 @@ export function AttendanceEditPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [branchId, filterDate, classFilter, dateMode, range.from, range.to]);
+  }, [branchId, filterDate, classFilter, statusFilter, sortBy, search, dateMode, range.from, range.to]);
 
   useEffect(() => {
     if (isAdmin && !selectedBranch && branches[0]?.id) {
@@ -104,70 +176,31 @@ export function AttendanceEditPage() {
     if (!branchId) {
       setStudents([]);
       setAttendance([]);
-      setTotalStudents(0);
-      setPresentTotal(0);
       return;
     }
     setLoading(true);
     setLoadError(null);
-    const studentClass = classFilter === "all" ? undefined : classFilter;
     try {
-      const pageResult = await listStudents({
-        branchId,
-        activeOnly: true,
-        studentClass,
-        page,
-        pageSize: PAGE_SIZE,
-      });
-
-      if (dateMode === "range") {
-        const [rangeAttendance, classRoster] = await Promise.all([
-          listAttendanceInRange({
-            from: range.from,
-            to: range.to,
-            branchId,
-          }),
-          studentClass
-            ? listStudentsByBranch(branchId, { activeOnly: true }).then((rows) =>
-                rows.filter((s) => s.class === studentClass),
-              )
-            : Promise.resolve(null),
-        ]);
-        const allowed = classRoster
-          ? new Set(classRoster.map((s) => s.id))
-          : null;
-        const scoped = allowed
-          ? rangeAttendance.filter((r) => allowed.has(r.studentId))
-          : rangeAttendance;
-        const presentIds = new Set(scoped.map((r) => r.studentId));
-        setStudents(pageResult.students);
-        setTotalStudents(pageResult.total);
-        setAttendance(scoped);
-        setPresentTotal(presentIds.size);
-      } else {
-        const [dayAttendance, presentCount] = await Promise.all([
-          listAttendanceForBranchDate(branchId, filterDate),
-          countPresentForBranchDate({
-            branchId,
-            date: filterDate,
-            studentClass,
-          }),
-        ]);
-        setStudents(pageResult.students);
-        setTotalStudents(pageResult.total);
-        setAttendance(dayAttendance);
-        setPresentTotal(presentCount);
-      }
+      const [roster, dayOrRangeAttendance] = await Promise.all([
+        listStudentsByBranch(branchId, { activeOnly: true }),
+        dateMode === "range"
+          ? listAttendanceInRange({
+              from: range.from,
+              to: range.to,
+              branchId,
+            })
+          : listAttendanceForBranchDate(branchId, filterDate),
+      ]);
+      setStudents(roster);
+      setAttendance(dayOrRangeAttendance);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Failed to load attendance.");
       setStudents([]);
       setAttendance([]);
-      setTotalStudents(0);
-      setPresentTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [branchId, filterDate, classFilter, page, dateMode, range.from, range.to]);
+  }, [branchId, filterDate, dateMode, range.from, range.to]);
 
   useEffect(() => {
     void reload();
@@ -192,23 +225,59 @@ export function AttendanceEditPage() {
     return byStudent;
   }, [attendance]);
 
-  const studentRows = useMemo<StudentAttendanceRow[]>(() => {
-    return students
-      .map((student) => {
-        const daysPresent = daysPresentByStudent.get(student.id) ?? 0;
-        const record = records.get(student.id);
-        return {
-          student,
-          record,
-          present: daysPresent > 0,
-          daysPresent,
-        };
-      })
-      .sort((a, b) => compareRollNumber(a.student.rollNumber, b.student.rollNumber));
-  }, [students, records, daysPresentByStudent]);
+  const classRoster = useMemo(() => {
+    if (classFilter === "all") return students;
+    return students.filter((s) => s.class === classFilter);
+  }, [students, classFilter]);
 
+  const scopedRows = useMemo<StudentAttendanceRow[]>(() => {
+    return classRoster.map((student) => {
+      const daysPresent = daysPresentByStudent.get(student.id) ?? 0;
+      const record = records.get(student.id);
+      return {
+        student,
+        record,
+        present: daysPresent > 0,
+        daysPresent,
+      };
+    });
+  }, [classRoster, records, daysPresentByStudent]);
+
+  const presentTotal = useMemo(
+    () => scopedRows.filter((row) => row.present).length,
+    [scopedRows],
+  );
+  const totalStudents = scopedRows.length;
   const absentTotal = Math.max(totalStudents - presentTotal, 0);
-  const totalPages = Math.max(1, Math.ceil(totalStudents / PAGE_SIZE));
+
+  const filteredRows = useMemo(() => {
+    const searchTerm = search.trim();
+    let rows = scopedRows;
+
+    if (searchTerm) {
+      const matchedIds = new Set(filterStudents(classRoster, searchTerm).map((s) => s.id));
+      rows = rows.filter((row) => matchedIds.has(row.student.id));
+    }
+
+    if (statusFilter === "present") {
+      rows = rows.filter((row) => row.present);
+    } else if (statusFilter === "absent") {
+      rows = rows.filter((row) => !row.present);
+    }
+
+    return sortStudentRows(rows, sortBy);
+  }, [scopedRows, classRoster, search, statusFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const studentRows = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, safePage]);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
 
   const openProfile = (studentId: string) => {
     navigate(studentProfilePath(session?.role, studentId));
@@ -224,7 +293,6 @@ export function AttendanceEditPage() {
           ...prev.filter((a) => !(a.studentId === student.id && a.date === filterDate)),
           res.record!,
         ]);
-        setPresentTotal((n) => n + 1);
       } else {
         void reload();
       }
@@ -249,7 +317,6 @@ export function AttendanceEditPage() {
     try {
       await deleteAttendance(record.id, record.branchId);
       setAttendance((prev) => prev.filter((a) => a.id !== record.id));
-      setPresentTotal((n) => Math.max(0, n - 1));
       toastSuccess("Attendance updated.", "Marked absent");
     } catch (e) {
       toastError(
@@ -274,10 +341,19 @@ export function AttendanceEditPage() {
   const dateLabel = isRange
     ? formatDateRangeLabel(range.from, range.to)
     : formatReportDate(filterDate);
-  const emptyMessage =
-    classFilter !== "all"
-      ? `No active students in class ${classFilter}.`
-      : "No active students in this branch.";
+  const emptyMessage = search.trim()
+    ? "No students match your search."
+    : statusFilter !== "all" && scopedRows.length > 0
+      ? statusFilter === "present"
+        ? isRange
+          ? "No students attended in the selected range."
+          : "No students are marked present."
+        : isRange
+          ? "No students were absent for the entire selected range."
+          : "No students are marked absent."
+      : classFilter !== "all"
+        ? `No active students in class ${classFilter}.`
+        : "No active students in this branch.";
 
   const switchToRange = () => {
     setRangeFrom(filterDate);
@@ -333,6 +409,27 @@ export function AttendanceEditPage() {
               ...CLASS_OPTIONS,
             ]}
           />
+          <Select
+            label="Status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            options={STATUS_OPTIONS}
+          />
+          <Select
+            label="Sort by"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortOption)}
+            options={SORT_OPTIONS}
+          />
+        </div>
+
+        <div className="mt-4">
+          <StudentSearchField
+            value={search}
+            onChange={setSearch}
+            branchId={branchId}
+            placeholder="Name, phone, roll number, or QR code"
+          />
         </div>
 
         <div className="mt-4">
@@ -365,6 +462,11 @@ export function AttendanceEditPage() {
           <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
             {absentTotal} {isRange ? "none" : "absent"}
           </span>
+          {(search.trim() || statusFilter !== "all") && (
+            <span className="rounded-full bg-morning/40 px-3 py-1 text-cerulean">
+              {filteredRows.length} shown
+            </span>
+          )}
           <span className="text-mist">{dateLabel}</span>
           {loading && <span className="text-mist">Loading…</span>}
         </div>
@@ -533,25 +635,26 @@ export function AttendanceEditPage() {
           <Button
             variant="outline"
             size="sm"
-            disabled={page <= 1 || loading}
+            disabled={safePage <= 1 || loading}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
             Previous
           </Button>
           <span className="text-mist">
-            Page {page} of {totalPages}
-            {totalStudents > 0 && (
+            Page {safePage} of {totalPages}
+            {filteredRows.length > 0 && (
               <>
                 {" "}
-                · showing {(page - 1) * PAGE_SIZE + 1}–
-                {Math.min(page * PAGE_SIZE, totalStudents)} of {totalStudents}
+                · showing {(safePage - 1) * PAGE_SIZE + 1}–
+                {Math.min(safePage * PAGE_SIZE, filteredRows.length)} of{" "}
+                {filteredRows.length}
               </>
             )}
           </span>
           <Button
             variant="outline"
             size="sm"
-            disabled={page >= totalPages || loading}
+            disabled={safePage >= totalPages || loading}
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
           >
             Next
