@@ -384,7 +384,7 @@ export function StudentProfilePage() {
                   size="sm"
                   onClick={() => setRangeOpen(true)}
                 >
-                  Attendance for dates
+                  Attendance by date range
                 </Button>
               </div>
             )}
