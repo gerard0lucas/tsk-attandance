@@ -6,6 +6,10 @@ import { ArrowLeft } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { canAccessBranch } from "../lib/branchAccess";
 import { formatReportDate } from "../lib/attendanceReport";
+import {
+  hasAttendanceReturn,
+  type StudentProfileLocationState,
+} from "../lib/attendanceReturn";
 import { todayKey } from "../lib/dates";
 import { calendarDaysForMonth, parseDateKey, toDateKey } from "../lib/reportRanges";
 import {
@@ -46,6 +50,27 @@ function resolveStudentsBase(pathname: string): string {
   return "/manager/students";
 }
 
+function resolveAttendanceBase(pathname: string): string {
+  if (pathname.startsWith("/admin")) return "/admin/attendance";
+  if (pathname.startsWith("/user")) return "/user/attendance";
+  return "/manager/attendance";
+}
+
+function resolveBackTarget(
+  pathname: string,
+  state: StudentProfileLocationState | null,
+): { to: string; label: string } {
+  const from = state?.from;
+  if (typeof from === "string" && from.includes("/attendance")) {
+    return { to: from, label: "Back to attendance" };
+  }
+  if (hasAttendanceReturn()) {
+    return { to: resolveAttendanceBase(pathname), label: "Back to attendance" };
+  }
+  const studentsBase = resolveStudentsBase(pathname);
+  return { to: studentsBase, label: "Back to students" };
+}
+
 export function StudentProfilePage() {
   const { studentId } = useParams<{ studentId: string }>();
   const location = useLocation();
@@ -58,6 +83,10 @@ export function StudentProfilePage() {
   const deleteAttendance = useStore((s) => s.deleteAttendance);
 
   const studentsBase = resolveStudentsBase(location.pathname);
+  const backTarget = resolveBackTarget(
+    location.pathname,
+    (location.state as StudentProfileLocationState | null) ?? null,
+  );
 
   const [student, setStudent] = useState<Student | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "missing">("loading");
@@ -304,9 +333,9 @@ export function StudentProfilePage() {
     <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-wrap items-start gap-2 sm:gap-3">
         <Link
-          to={studentsBase}
+          to={backTarget.to}
           className="touch-target inline-flex h-11 w-11 shrink-0 items-center justify-center rounded border border-morning bg-white text-cerulean hover:bg-morning/40"
-          aria-label="Back to students"
+          aria-label={backTarget.label}
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>

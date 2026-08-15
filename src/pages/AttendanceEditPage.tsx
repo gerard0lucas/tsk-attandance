@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { differenceInCalendarDays } from "date-fns";
 import Swal from "sweetalert2";
@@ -30,6 +30,13 @@ import {
 } from "../lib/reportRanges";
 import { useScrollIntoViewOnChange } from "../hooks/useScrollIntoViewOnChange";
 import {
+  attendancePathForRole,
+  clearAttendanceReturn,
+  readAttendanceReturnForMount,
+  saveAttendanceReturn,
+  type AttendanceListReturn,
+} from "../lib/attendanceReturn";
+import {
   listAttendanceForBranchDate,
   listAttendanceInRange,
   listStudentsByBranch,
@@ -50,6 +57,24 @@ type SortOption =
   | "class-asc"
   | "present-first"
   | "absent-first";
+
+const SORT_VALUES = new Set<SortOption>([
+  "roll-asc",
+  "roll-desc",
+  "name-asc",
+  "name-desc",
+  "class-asc",
+  "present-first",
+  "absent-first",
+]);
+
+function isStatusFilter(value: string): value is StatusFilter {
+  return value === "all" || value === "present" || value === "absent";
+}
+
+function isSortOption(value: string): value is SortOption {
+  return SORT_VALUES.has(value as SortOption);
+}
 
 type StudentAttendanceRow = {
   student: Student;
@@ -134,25 +159,50 @@ export function AttendanceEditPage() {
   const markAttendanceForDate = useStore((s) => s.markAttendanceForDate);
   const deleteAttendance = useStore((s) => s.deleteAttendance);
 
+  // Peek once per mount cycle (Strict Mode safe); clear after scroll restore.
+  const restoredRef = useRef<AttendanceListReturn | null | undefined>(undefined);
+  if (restoredRef.current === undefined) {
+    restoredRef.current = readAttendanceReturnForMount();
+  }
+  const restored = restoredRef.current;
+
   const isAdmin = session?.role === "admin";
   const [selectedBranch, setSelectedBranch] = useState(
-    () => session?.branchId ?? branches[0]?.id ?? "",
+    () =>
+      restored?.selectedBranch ||
+      session?.branchId ||
+      branches[0]?.id ||
+      "",
   );
   const branchId = isAdmin ? selectedBranch : session?.branchId;
-  const [dateMode, setDateMode] = useState<"single" | "range">("single");
-  const [filterDate, setFilterDate] = useState(todayKey);
-  const [rangeFrom, setRangeFrom] = useState(todayKey);
-  const [rangeTo, setRangeTo] = useState(todayKey);
-  const [classFilter, setClassFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [sortBy, setSortBy] = useState<SortOption>("roll-asc");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [dateMode, setDateMode] = useState<"single" | "range">(
+    () => (restored?.dateMode === "range" ? "range" : "single"),
+  );
+  const [filterDate, setFilterDate] = useState(() => restored?.filterDate ?? todayKey());
+  const [rangeFrom, setRangeFrom] = useState(() => restored?.rangeFrom ?? todayKey());
+  const [rangeTo, setRangeTo] = useState(() => restored?.rangeTo ?? todayKey());
+  const [classFilter, setClassFilter] = useState(() => restored?.classFilter ?? "all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() =>
+    restored && isStatusFilter(restored.statusFilter) ? restored.statusFilter : "all",
+  );
+  const [sortBy, setSortBy] = useState<SortOption>(() =>
+    restored && isSortOption(restored.sortBy) ? restored.sortBy : "roll-asc",
+  );
+  const [search, setSearch] = useState(() => restored?.search ?? "");
+  const [page, setPage] = useState(() =>
+    restored && restored.page >= 1 ? restored.page : 1,
+  );
   const [rangeStudent, setRangeStudent] = useState<Student | null>(null);
+  const [highlightStudentId, setHighlightStudentId] = useState<string | null>(null);
+  const pendingScrollRestore = useRef(
+    restored
+      ? { scrollY: restored.scrollY, focusStudentId: restored.focusStudentId }
+      : null,
+  );
 
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const range = useMemo(
@@ -166,9 +216,24 @@ export function AttendanceEditPage() {
     [range.from, range.to],
   );
 
+  const filtersKey = [
+    branchId,
+    filterDate,
+    classFilter,
+    statusFilter,
+    sortBy,
+    search,
+    dateMode,
+    range.from,
+    range.to,
+  ].join("|");
+  const prevFiltersKeyRef = useRef(filtersKey);
+
   useEffect(() => {
+    if (prevFiltersKeyRef.current === filtersKey) return;
+    prevFiltersKeyRef.current = filtersKey;
     setPage(1);
-  }, [branchId, filterDate, classFilter, statusFilter, sortBy, search, dateMode, range.from, range.to]);
+  }, [filtersKey]);
 
   useEffect(() => {
     if (isAdmin && !selectedBranch && branches[0]?.id) {
@@ -180,6 +245,7 @@ export function AttendanceEditPage() {
     if (!branchId) {
       setStudents([]);
       setAttendance([]);
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -273,7 +339,8 @@ export function AttendanceEditPage() {
   }, [scopedRows, classRoster, search, statusFilter, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
+  // Don't clamp while loading — empty roster would force page 1 and wipe a restored page.
+  const safePage = loading ? page : Math.min(page, totalPages);
   const listTopRef = useScrollIntoViewOnChange<HTMLDivElement>(safePage);
   const studentRows = useMemo(() => {
     const start = (safePage - 1) * PAGE_SIZE;
@@ -281,11 +348,86 @@ export function AttendanceEditPage() {
   }, [filteredRows, safePage]);
 
   useEffect(() => {
+    if (loading) return;
     if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
+  }, [loading, page, safePage]);
+
+  // After roster loads, put the focused student on the correct page before scrolling.
+  useEffect(() => {
+    if (loading) return;
+    const focusId = pendingScrollRestore.current?.focusStudentId;
+    if (!focusId || filteredRows.length === 0) return;
+    const idx = filteredRows.findIndex((row) => row.student.id === focusId);
+    if (idx < 0) return;
+    const targetPage = Math.floor(idx / PAGE_SIZE) + 1;
+    if (page !== targetPage) setPage(targetPage);
+  }, [loading, filteredRows, page]);
+
+  useEffect(() => {
+    const pending = pendingScrollRestore.current;
+    if (!pending || loading) return;
+
+    const focusId = pending.focusStudentId;
+    if (focusId) {
+      const onPage = studentRows.some((row) => row.student.id === focusId);
+      if (!onPage) return;
+    }
+
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const stillPending = pendingScrollRestore.current;
+        if (!stillPending) return;
+
+        const flashRow = (studentId: string) => {
+          setHighlightStudentId(studentId);
+          window.setTimeout(() => {
+            setHighlightStudentId((current) => (current === studentId ? null : current));
+          }, 1000);
+        };
+
+        if (focusId) {
+          const nodes = document.querySelectorAll(
+            `[data-student-id="${CSS.escape(focusId)}"]`,
+          );
+          for (const node of nodes) {
+            if (!(node instanceof HTMLElement)) continue;
+            if (node.getClientRects().length === 0) continue;
+            pendingScrollRestore.current = null;
+            node.scrollIntoView({ block: "center", behavior: "auto" });
+            flashRow(focusId);
+            clearAttendanceReturn();
+            return;
+          }
+          return;
+        }
+
+        pendingScrollRestore.current = null;
+        window.scrollTo({ top: stillPending.scrollY, behavior: "auto" });
+        clearAttendanceReturn();
+      });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [loading, studentRows]);
 
   const openProfile = (studentId: string) => {
-    navigate(studentProfilePath(session?.role, studentId));
+    saveAttendanceReturn({
+      path: attendancePathForRole(session?.role),
+      selectedBranch,
+      dateMode,
+      filterDate,
+      rangeFrom,
+      rangeTo,
+      classFilter,
+      statusFilter,
+      sortBy,
+      search,
+      page: safePage,
+      scrollY: window.scrollY,
+      focusStudentId: studentId,
+    });
+    navigate(studentProfilePath(session?.role, studentId), {
+      state: { from: attendancePathForRole(session?.role) },
+    });
   };
 
   const markPresent = async (student: Student) => {
@@ -487,8 +629,11 @@ export function AttendanceEditPage() {
       <div ref={listTopRef} className="scroll-mt-20">
         <div className="space-y-3 md:hidden">
           {studentRows.map(({ student, record, present, daysPresent }) => (
+            <div key={student.id} data-student-id={student.id}>
             <CardRow
-              key={student.id}
+              className={
+                highlightStudentId === student.id ? "attendance-row-flash" : undefined
+              }
               actions={
                 <div className="flex w-full flex-col gap-2">
                   <Button
@@ -556,6 +701,7 @@ export function AttendanceEditPage() {
                 </div>
               </div>
             </CardRow>
+            </div>
           ))}
           {!loading && studentRows.length === 0 && (
             <p className="text-sm text-mist">{emptyMessage}</p>
@@ -577,7 +723,13 @@ export function AttendanceEditPage() {
               </thead>
               <tbody>
                 {studentRows.map(({ student, record, present, daysPresent }) => (
-                  <tr key={student.id} className="border-b border-morning last:border-0">
+                  <tr
+                    key={student.id}
+                    data-student-id={student.id}
+                    className={`border-b border-morning last:border-0${
+                      highlightStudentId === student.id ? " attendance-row-flash" : ""
+                    }`}
+                  >
                     <td className={tableCell}>
                       <div className="flex items-center gap-3">
                         <StudentPhoto student={student} size="sm" />
