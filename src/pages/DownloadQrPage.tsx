@@ -3,7 +3,7 @@ import { Download } from "lucide-react";
 import { toastError, toastSuccess } from "../lib/toast";
 import { useStore } from "../store/useStore";
 import { downloadStudentQrPng, downloadStudentsQrZip } from "../lib/qrExport";
-import { sortStudentsByRollNumber } from "../lib/student";
+import { CLASS_OPTIONS, sortStudentsByRollNumber } from "../lib/student";
 import { getStudentByRoll, listStudentsByBranch } from "../lib/db";
 import { validateQrDownload } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
@@ -107,10 +107,6 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
       window.clearTimeout(timer);
     };
   }, [mode, rollNumber, branchFilter]);
-
-  const classOptions = useMemo(() => {
-    return [...new Set(branchStudents.map((s) => s.class.trim()).filter(Boolean))].sort();
-  }, [branchStudents]);
 
   const targetStudents = useMemo((): Student[] => {
     if (mode === "individual") {
@@ -317,7 +313,7 @@ export function DownloadQrPage({ role }: { role: UserRole }) {
               error={errors.class}
               options={[
                 { value: "", label: loadingStudents ? "Loading classes…" : "Select a class" },
-                ...classOptions.map((c) => ({ value: c, label: c })),
+                ...CLASS_OPTIONS,
               ]}
             />
           </>
