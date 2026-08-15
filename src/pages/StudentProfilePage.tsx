@@ -37,6 +37,7 @@ import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { FormActions, FormStack } from "../components/ui/FormStack";
 import { PhotoUpload } from "../components/PhotoUpload";
+import { MarkPresentRangeDialog } from "../components/MarkPresentRangeDialog";
 import type { AttendanceRecord, Gender, Medium, Student } from "../types";
 
 function resolveStudentsBase(pathname: string): string {
@@ -66,6 +67,7 @@ export function StudentProfilePage() {
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
   const [formOpen, setFormOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [rangeOpen, setRangeOpen] = useState(false);
   const [deletingBusy, setDeletingBusy] = useState(false);
   const [name, setName] = useState("");
   const [rollNumber, setRollNumber] = useState("");
@@ -375,6 +377,17 @@ export function StudentProfilePage() {
                 <Badge tone="neutral">Absent today</Badge>
               )}
             </div>
+            {student.active && (
+              <div className="pt-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setRangeOpen(true)}
+                >
+                  Attendance for dates
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </Card>
@@ -509,6 +522,22 @@ export function StudentProfilePage() {
         onConfirm={() => void confirmDelete()}
         onCancel={() => {
           if (!deletingBusy) setDeleteOpen(false);
+        }}
+      />
+
+      <MarkPresentRangeDialog
+        open={rangeOpen}
+        student={student}
+        onClose={() => setRangeOpen(false)}
+        onChanged={() => {
+          void reloadAttendance(student.id, monthRange.from, monthRange.to);
+          void (async () => {
+            const todayRecord = await getAttendanceForStudentDate(
+              student.id,
+              todayKey(),
+            );
+            setPresentToday(Boolean(todayRecord));
+          })();
         }}
       />
     </div>

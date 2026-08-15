@@ -11,6 +11,12 @@ import type {
 import { branchAccessError } from "../lib/branchAccess";
 import { pauseAuthSync, resumeAuthSync } from "../lib/authSync";
 import { todayKey } from "../lib/dates";
+import {
+  dateKeysInRange,
+  formatDateRangeLabel,
+  MAX_ATTENDANCE_RANGE_DAYS,
+  normalizeDateRange,
+} from "../lib/reportRanges";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { toUserMessage } from "../lib/userError";
 import * as db from "../lib/db";
@@ -139,6 +145,29 @@ interface AppState {
     markedById: string,
     studentHint?: Student,
   ) => Promise<{ ok: boolean; message: string; record?: AttendanceRecord }>;
+  markAttendanceForDateRange: (
+    studentId: string,
+    from: string,
+    to: string,
+    markedById: string,
+    studentHint?: Student,
+  ) => Promise<{
+    ok: boolean;
+    message: string;
+    marked: number;
+    skipped: number;
+    createdIds: string[];
+  }>;
+  clearAttendanceInRange: (
+    studentId: string,
+    from: string,
+    to: string,
+    studentHint?: Student,
+  ) => Promise<{
+    ok: boolean;
+    message: string;
+    cleared: number;
+  }>;
   deleteAttendance: (id: string, branchId?: string) => Promise<void>;
 
   getBranch: (id: string) => Branch | undefined;
@@ -467,6 +496,172 @@ export const useStore = create<AppState>()((set, get) => ({
         }
         return { ok: false, message: msg };
       }
+    }),
+
+  markAttendanceForDateRange: (studentId, from, to, markedById, studentHint) =>
+    runAction(async () => {
+      const session = get().session;
+      const student = studentHint ?? (await db.getStudentById(studentId));
+      if (!student) {
+        return { ok: false, message: "Student not found.", marked: 0, skipped: 0, createdIds: [] };
+      }
+      if (!student.active) {
+        return {
+          ok: false,
+          message: "This student is inactive and can't be marked.",
+          marked: 0,
+          skipped: 0,
+          createdIds: [],
+        };
+      }
+
+      const branchErr = branchAccessError(session, student.branchId);
+      if (branchErr) {
+        return { ok: false, message: branchErr, marked: 0, skipped: 0, createdIds: [] };
+      }
+
+      const range = normalizeDateRange(from, to);
+      const today = todayKey();
+      if (range.to > today) {
+        return {
+          ok: false,
+          message: "Future dates cannot be marked present.",
+          marked: 0,
+          skipped: 0,
+          createdIds: [],
+        };
+      }
+
+      const keys = dateKeysInRange(range.from, range.to).filter((d) => d <= today);
+      if (keys.length === 0) {
+        return {
+          ok: false,
+          message: "Select a valid date range.",
+          marked: 0,
+          skipped: 0,
+          createdIds: [],
+        };
+      }
+      if (keys.length > MAX_ATTENDANCE_RANGE_DAYS) {
+        return {
+          ok: false,
+          message: `Choose at most ${MAX_ATTENDANCE_RANGE_DAYS} days at a time.`,
+          marked: 0,
+          skipped: 0,
+          createdIds: [],
+        };
+      }
+
+      const existing = await db.listAttendanceForStudent(studentId, {
+        from: keys[0],
+        to: keys[keys.length - 1],
+      });
+      const presentDates = new Set(existing.map((r) => r.date));
+      const missing = keys.filter((d) => !presentDates.has(d));
+      const skipped = keys.length - missing.length;
+
+      const createdIds: string[] = [];
+      try {
+        for (const date of missing) {
+          const record = await db.insertAttendance({
+            studentId,
+            branchId: student.branchId,
+            markedById,
+            date,
+          });
+          createdIds.push(record.id);
+        }
+      } catch (e) {
+        const msg = toUserMessage(e, "Couldn't mark attendance. Please try again.");
+        if (createdIds.length > 0) {
+          return {
+            ok: true,
+            message: `Marked ${createdIds.length} day${createdIds.length === 1 ? "" : "s"}, then stopped: ${msg}`,
+            marked: createdIds.length,
+            skipped,
+            createdIds,
+          };
+        }
+        return { ok: false, message: msg, marked: 0, skipped, createdIds: [] };
+      }
+
+      const label = formatDateRangeLabel(range.from, range.to);
+      const parts = [
+        `${createdIds.length} marked present`,
+        skipped > 0 ? `${skipped} already present` : null,
+      ].filter(Boolean);
+      return {
+        ok: true,
+        message: `${student.name}: ${parts.join(", ")} · ${label}`,
+        marked: createdIds.length,
+        skipped,
+        createdIds,
+      };
+    }),
+
+  clearAttendanceInRange: (studentId, from, to, studentHint) =>
+    runAction(async () => {
+      const session = get().session;
+      const student = studentHint ?? (await db.getStudentById(studentId));
+      if (!student) return { ok: false, message: "Student not found.", cleared: 0 };
+
+      const branchErr = branchAccessError(session, student.branchId);
+      if (branchErr) return { ok: false, message: branchErr, cleared: 0 };
+
+      const range = normalizeDateRange(from, to);
+      const keys = dateKeysInRange(range.from, range.to);
+      if (keys.length === 0) {
+        return { ok: false, message: "Select a valid date range.", cleared: 0 };
+      }
+      if (keys.length > MAX_ATTENDANCE_RANGE_DAYS) {
+        return {
+          ok: false,
+          message: `Choose at most ${MAX_ATTENDANCE_RANGE_DAYS} days at a time.`,
+          cleared: 0,
+        };
+      }
+
+      const existing = await db.listAttendanceForStudent(studentId, {
+        from: range.from,
+        to: range.to,
+      });
+      if (existing.length === 0) {
+        return {
+          ok: true,
+          message: `${student.name} was already absent for that range.`,
+          cleared: 0,
+        };
+      }
+
+      let cleared = 0;
+      try {
+        for (const record of existing) {
+          await db.removeAttendance(record.id);
+          cleared += 1;
+        }
+      } catch (e) {
+        const msg = toUserMessage(e, "Couldn't mark absent. Please try again.");
+        if (cleared > 0) {
+          return {
+            ok: true,
+            message: `Marked ${cleared} day${cleared === 1 ? "" : "s"} absent, then stopped: ${msg}`,
+            cleared,
+          };
+        }
+        return { ok: false, message: msg, cleared: 0 };
+      }
+
+      const label = formatDateRangeLabel(range.from, range.to);
+      const skipped = keys.length - cleared;
+      const parts = [
+        `${cleared} marked absent`,
+        skipped > 0 ? `${skipped} already absent` : null,
+      ].filter(Boolean);
+      return {
+        ok: true,
+        message: `${student.name}: ${parts.join(", ")} · ${label}`,
+        cleared,
+      };
     }),
 
   deleteAttendance: (id, branchId) =>

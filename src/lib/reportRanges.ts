@@ -183,3 +183,15 @@ export function calendarDaysForMonth(visibleMonth: Date): Date[] {
 export function isDateKeyInRange(dateKey: string, from: string, to: string): boolean {
   return dateKey >= from && dateKey <= to;
 }
+
+/** Inclusive list of yyyy-MM-dd keys from → to (normalized so from ≤ to). */
+export function dateKeysInRange(from: string, to: string): string[] {
+  const range = normalizeDateRange(from, to);
+  return eachDayOfInterval({
+    start: parseDateKey(range.from),
+    end: parseDateKey(range.to),
+  }).map(toDateKey);
+}
+
+/** Max days allowed for bulk mark-present range actions. */
+export const MAX_ATTENDANCE_RANGE_DAYS = 62;

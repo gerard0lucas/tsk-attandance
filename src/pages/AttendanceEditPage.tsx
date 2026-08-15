@@ -34,6 +34,7 @@ import {
   listStudentsByBranch,
 } from "../lib/db";
 import { StudentSearchField } from "../components/StudentSearchField";
+import { MarkPresentRangeDialog } from "../components/MarkPresentRangeDialog";
 import { toUserMessage } from "../lib/userError";
 import type { AttendanceRecord, Student, UserRole } from "../types";
 
@@ -146,6 +147,7 @@ export function AttendanceEditPage() {
   const [sortBy, setSortBy] = useState<SortOption>("roll-asc");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [rangeStudent, setRangeStudent] = useState<Student | null>(null);
 
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
@@ -495,6 +497,14 @@ export function AttendanceEditPage() {
                   <Eye className="h-4 w-4" aria-hidden />
                   Profile
                 </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setRangeStudent(student)}
+                >
+                  Range
+                </Button>
                 {!isRange &&
                   (present && record ? (
                     <Button
@@ -590,7 +600,7 @@ export function AttendanceEditPage() {
                       : "—"}
                   </td>
                   <td className={`${tableActionsCell} text-left`}>
-                    <div className="inline-flex items-center gap-2">
+                    <div className="inline-flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -599,6 +609,14 @@ export function AttendanceEditPage() {
                       >
                         <Eye className="h-3.5 w-3.5" aria-hidden />
                         Profile
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="w-[5.5rem] shrink-0"
+                        onClick={() => setRangeStudent(student)}
+                      >
+                        Range
                       </Button>
                       {!isRange &&
                         (present && record ? (
@@ -662,6 +680,13 @@ export function AttendanceEditPage() {
           </Button>
         </div>
       )}
+
+      <MarkPresentRangeDialog
+        open={rangeStudent !== null}
+        student={rangeStudent}
+        onClose={() => setRangeStudent(null)}
+        onChanged={() => void reload()}
+      />
     </div>
   );
 }
