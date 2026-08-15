@@ -35,6 +35,7 @@ import {
 import { validateStudentFields, sanitizeRollNumber } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
 import { usePagedStudents } from "../../hooks/usePagedStudents";
+import { useScrollIntoViewOnChange } from "../../hooks/useScrollIntoViewOnChange";
 import type { Gender, Medium, Student } from "../../types";
 
 export function AdminStudents() {
@@ -84,6 +85,7 @@ export function AdminStudents() {
       page,
       enabled: Boolean(filterBranch),
     });
+  const listTopRef = useScrollIntoViewOnChange<HTMLDivElement>(page, { busy: loading });
 
   const openQr = (studentId: string) => {
     navigate(`/admin/students/${studentId}/qr`);
@@ -239,61 +241,63 @@ export function AdminStudents() {
       {loading && <p className="text-sm text-mist">Loading…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <div className="space-y-3 md:hidden">
-        {students.map((s) => (
-          <StudentCard
-            key={s.id}
-            student={s}
-            branchName={getBranch(s.branchId)?.name}
-            present={presentTodayIds.has(s.id)}
-            onView={() => openView(s)}
-            onEdit={() => openEdit(s)}
-            onQr={() => openQr(s.id)}
-            onDelete={() => setDeleting(s)}
-          />
-        ))}
-        {!loading && students.length === 0 && (
-          <p className="text-sm text-mist">
-            {search ? "No students match your search." : "No students found."}
-          </p>
-        )}
-      </div>
+      <div ref={listTopRef} className="scroll-mt-20">
+        <div className="space-y-3 md:hidden">
+          {students.map((s) => (
+            <StudentCard
+              key={s.id}
+              student={s}
+              branchName={getBranch(s.branchId)?.name}
+              present={presentTodayIds.has(s.id)}
+              onView={() => openView(s)}
+              onEdit={() => openEdit(s)}
+              onQr={() => openQr(s.id)}
+              onDelete={() => setDeleting(s)}
+            />
+          ))}
+          {!loading && students.length === 0 && (
+            <p className="text-sm text-mist">
+              {search ? "No students match your search." : "No students found."}
+            </p>
+          )}
+        </div>
 
-      <Card padding="sm" className="hidden md:block">
-        <TableWrap>
-          <table className="w-full min-w-[800px]">
-            <thead>
-              <tr className="border-b border-morning">
-                <th className={`${tableHeadCell} text-center`}>Photo</th>
-                <th className={`${tableHeadCell} text-center`}>Roll</th>
-                <th className={`${tableHeadCell} text-center`}>Name</th>
-                <th className={`${tableHeadCell} text-center`}>Class</th>
-                <th className={`${tableHeadCell} text-center`}>Branch</th>
-                <th className={`${tableHeadCell} text-center`}>Phone</th>
-                <th className={`${tableHeadCell} text-center`}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s) => (
-                <StudentRow
-                  key={s.id}
-                  student={s}
-                  branchName={getBranch(s.branchId)?.name}
-                  onView={() => openView(s)}
-                  onEdit={() => openEdit(s)}
-                  onQr={() => openQr(s.id)}
-                  onDelete={() => setDeleting(s)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-        {!loading && students.length === 0 && (
-          <p className="text-sm text-mist">
-            {search ? "No students match your search." : "No students found."}
-          </p>
-        )}
-      </Card>
+        <Card padding="sm" className="hidden md:block">
+          <TableWrap>
+            <table className="w-full min-w-[800px]">
+              <thead>
+                <tr className="border-b border-morning">
+                  <th className={`${tableHeadCell} text-center`}>Photo</th>
+                  <th className={`${tableHeadCell} text-center`}>Roll</th>
+                  <th className={`${tableHeadCell} text-center`}>Name</th>
+                  <th className={`${tableHeadCell} text-center`}>Class</th>
+                  <th className={`${tableHeadCell} text-center`}>Branch</th>
+                  <th className={`${tableHeadCell} text-center`}>Phone</th>
+                  <th className={`${tableHeadCell} text-center`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s) => (
+                  <StudentRow
+                    key={s.id}
+                    student={s}
+                    branchName={getBranch(s.branchId)?.name}
+                    onView={() => openView(s)}
+                    onEdit={() => openEdit(s)}
+                    onQr={() => openQr(s.id)}
+                    onDelete={() => setDeleting(s)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+          {!loading && students.length === 0 && (
+            <p className="text-sm text-mist">
+              {search ? "No students match your search." : "No students found."}
+            </p>
+          )}
+        </Card>
+      </div>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-3 text-sm">

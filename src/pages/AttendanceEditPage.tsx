@@ -28,6 +28,7 @@ import {
   parseDateKey,
   formatDateRangeLabel,
 } from "../lib/reportRanges";
+import { useScrollIntoViewOnChange } from "../hooks/useScrollIntoViewOnChange";
 import {
   listAttendanceForBranchDate,
   listAttendanceInRange,
@@ -273,6 +274,7 @@ export function AttendanceEditPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
+  const listTopRef = useScrollIntoViewOnChange<HTMLDivElement>(safePage);
   const studentRows = useMemo(() => {
     const start = (safePage - 1) * PAGE_SIZE;
     return filteredRows.slice(start, start + PAGE_SIZE);
@@ -482,108 +484,65 @@ export function AttendanceEditPage() {
         {loadError && <p className="mt-2 text-sm text-red-600">{loadError}</p>}
       </Card>
 
-      <div className="space-y-3 md:hidden">
-        {studentRows.map(({ student, record, present, daysPresent }) => (
-          <CardRow
-            key={student.id}
-            actions={
-              <div className="flex w-full flex-col gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-1.5"
-                  onClick={() => openProfile(student.id)}
-                >
-                  <Eye className="h-4 w-4" aria-hidden />
-                  Profile
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => setRangeStudent(student)}
-                >
-                  Range
-                </Button>
-                {!isRange &&
-                  (present && record ? (
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => void markAbsent(record, student.name)}
-                    >
-                      Absent
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      onClick={() => void markPresent(student)}
-                    >
-                      Present
-                    </Button>
-                  ))}
-              </div>
-            }
-          >
-            <div className="flex gap-3">
-              <StudentPhoto student={student} size="md" />
-              <div className="min-w-0">
-                <p className="font-medium text-cerulean">{student.name}</p>
-                <p className="text-sm text-mist">
-                  Roll {student.rollNumber} · Class {student.class}
-                </p>
-                {present && record && !isRange ? (
-                  <p className="mt-1 text-xs text-mist">
-                    {formatTime(record.markedAt)} · {getMarkedByName(record.markedById)}
-                  </p>
-                ) : null}
-                <div className="mt-2">
-                  {isRange ? (
-                    <Badge tone={daysPresent > 0 ? "success" : "neutral"}>
-                      {daysPresent}/{rangeDayCount} days
-                    </Badge>
-                  ) : present ? (
-                    <Badge tone="success">Present</Badge>
-                  ) : (
-                    <Badge tone="neutral">Absent</Badge>
-                  )}
+      <div ref={listTopRef} className="scroll-mt-20">
+        <div className="space-y-3 md:hidden">
+          {studentRows.map(({ student, record, present, daysPresent }) => (
+            <CardRow
+              key={student.id}
+              actions={
+                <div className="flex w-full flex-col gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-1.5"
+                    onClick={() => openProfile(student.id)}
+                  >
+                    <Eye className="h-4 w-4" aria-hidden />
+                    Profile
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setRangeStudent(student)}
+                  >
+                    Range
+                  </Button>
+                  {!isRange &&
+                    (present && record ? (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => void markAbsent(record, student.name)}
+                      >
+                        Absent
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() => void markPresent(student)}
+                      >
+                        Present
+                      </Button>
+                    ))}
                 </div>
-              </div>
-            </div>
-          </CardRow>
-        ))}
-        {!loading && studentRows.length === 0 && (
-          <p className="text-sm text-mist">{emptyMessage}</p>
-        )}
-      </div>
-
-      <Card padding="sm" className="hidden md:block">
-        <TableWrap>
-          <table className="w-full min-w-[760px]">
-            <thead>
-              <tr className="border-b border-morning">
-                <th className={tableHeadCell}>Student</th>
-                <th className={tableHeadCell}>Roll</th>
-                <th className={tableHeadCell}>Class</th>
-                <th className={tableHeadCell}>Status</th>
-                <th className={tableHeadCell}>{isRange ? "Last check-in" : "Checked in"}</th>
-                <th className={tableHeadCell}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {studentRows.map(({ student, record, present, daysPresent }) => (
-                <tr key={student.id} className="border-b border-morning last:border-0">
-                  <td className={tableCell}>
-                    <div className="flex items-center gap-3">
-                      <StudentPhoto student={student} size="sm" />
-                      <span className="font-medium">{student.name}</span>
-                    </div>
-                  </td>
-                  <td className={tableCellMuted}>{student.rollNumber}</td>
-                  <td className={tableCell}>{student.class}</td>
-                  <td className={tableCell}>
+              }
+            >
+              <div className="flex gap-3">
+                <StudentPhoto student={student} size="md" />
+                <div className="min-w-0">
+                  <p className="font-medium text-cerulean">{student.name}</p>
+                  <p className="text-sm text-mist">
+                    Roll {student.rollNumber} · Class {student.class}
+                  </p>
+                  {present && record && !isRange ? (
+                    <p className="mt-1 text-xs text-mist">
+                      {formatTime(record.markedAt)} · {getMarkedByName(record.markedById)}
+                    </p>
+                  ) : null}
+                  <div className="mt-2">
                     {isRange ? (
                       <Badge tone={daysPresent > 0 ? "success" : "neutral"}>
                         {daysPresent}/{rangeDayCount} days
@@ -593,61 +552,106 @@ export function AttendanceEditPage() {
                     ) : (
                       <Badge tone="neutral">Absent</Badge>
                     )}
-                  </td>
-                  <td className={tableCellMuted}>
-                    {present && record
-                      ? `${isRange ? `${formatReportDate(record.date)} · ` : ""}${formatTime(record.markedAt)} · ${getMarkedByName(record.markedById)}`
-                      : "—"}
-                  </td>
-                  <td className={`${tableActionsCell} text-left`}>
-                    <div className="inline-flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-[5.5rem] shrink-0 gap-1"
-                        onClick={() => openProfile(student.id)}
-                      >
-                        <Eye className="h-3.5 w-3.5" aria-hidden />
-                        Profile
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="w-[5.5rem] shrink-0"
-                        onClick={() => setRangeStudent(student)}
-                      >
-                        Range
-                      </Button>
-                      {!isRange &&
-                        (present && record ? (
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            className="w-[5.5rem] shrink-0"
-                            onClick={() => void markAbsent(record, student.name)}
-                          >
-                            Absent
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            className="w-[5.5rem] shrink-0"
-                            onClick={() => void markPresent(student)}
-                          >
-                            Present
-                          </Button>
-                        ))}
-                    </div>
-                  </td>
+                  </div>
+                </div>
+              </div>
+            </CardRow>
+          ))}
+          {!loading && studentRows.length === 0 && (
+            <p className="text-sm text-mist">{emptyMessage}</p>
+          )}
+        </div>
+
+        <Card padding="sm" className="hidden md:block">
+          <TableWrap>
+            <table className="w-full min-w-[760px]">
+              <thead>
+                <tr className="border-b border-morning">
+                  <th className={tableHeadCell}>Student</th>
+                  <th className={tableHeadCell}>Roll</th>
+                  <th className={tableHeadCell}>Class</th>
+                  <th className={tableHeadCell}>Status</th>
+                  <th className={tableHeadCell}>{isRange ? "Last check-in" : "Checked in"}</th>
+                  <th className={tableHeadCell}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableWrap>
-        {!loading && studentRows.length === 0 && (
-          <p className="text-sm text-mist">{emptyMessage}</p>
-        )}
-      </Card>
+              </thead>
+              <tbody>
+                {studentRows.map(({ student, record, present, daysPresent }) => (
+                  <tr key={student.id} className="border-b border-morning last:border-0">
+                    <td className={tableCell}>
+                      <div className="flex items-center gap-3">
+                        <StudentPhoto student={student} size="sm" />
+                        <span className="font-medium">{student.name}</span>
+                      </div>
+                    </td>
+                    <td className={tableCellMuted}>{student.rollNumber}</td>
+                    <td className={tableCell}>{student.class}</td>
+                    <td className={tableCell}>
+                      {isRange ? (
+                        <Badge tone={daysPresent > 0 ? "success" : "neutral"}>
+                          {daysPresent}/{rangeDayCount} days
+                        </Badge>
+                      ) : present ? (
+                        <Badge tone="success">Present</Badge>
+                      ) : (
+                        <Badge tone="neutral">Absent</Badge>
+                      )}
+                    </td>
+                    <td className={tableCellMuted}>
+                      {present && record
+                        ? `${isRange ? `${formatReportDate(record.date)} · ` : ""}${formatTime(record.markedAt)} · ${getMarkedByName(record.markedById)}`
+                        : "—"}
+                    </td>
+                    <td className={`${tableActionsCell} text-left`}>
+                      <div className="inline-flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-[5.5rem] shrink-0 gap-1"
+                          onClick={() => openProfile(student.id)}
+                        >
+                          <Eye className="h-3.5 w-3.5" aria-hidden />
+                          Profile
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-[5.5rem] shrink-0"
+                          onClick={() => setRangeStudent(student)}
+                        >
+                          Range
+                        </Button>
+                        {!isRange &&
+                          (present && record ? (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              className="w-[5.5rem] shrink-0"
+                              onClick={() => void markAbsent(record, student.name)}
+                            >
+                              Absent
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="w-[5.5rem] shrink-0"
+                              onClick={() => void markPresent(student)}
+                            >
+                              Present
+                            </Button>
+                          ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableWrap>
+          {!loading && studentRows.length === 0 && (
+            <p className="text-sm text-mist">{emptyMessage}</p>
+          )}
+        </Card>
+      </div>
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between gap-3 text-sm">

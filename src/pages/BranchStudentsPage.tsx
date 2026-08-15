@@ -27,6 +27,7 @@ import {
 import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
 import { usePagedStudents } from "../hooks/usePagedStudents";
+import { useScrollIntoViewOnChange } from "../hooks/useScrollIntoViewOnChange";
 import type { Gender, Medium, Student } from "../types";
 
 type BranchStudentsBasePath = "/manager" | "/user";
@@ -65,6 +66,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
 
   const { students, total, totalPages, loading, error, presentTodayIds, reload } =
     usePagedStudents({ branchId, search, page });
+  const listTopRef = useScrollIntoViewOnChange<HTMLDivElement>(page, { busy: loading });
 
   const openQr = (studentId: string) => {
     navigate(`${basePath}/students/${studentId}/qr`);
@@ -200,7 +202,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
       {loading && <p className="text-sm text-mist">Loading…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <div className="space-y-3">
+      <div ref={listTopRef} className="scroll-mt-20 space-y-3">
         {students.map((s) => (
           <CardRow
             key={s.id}
