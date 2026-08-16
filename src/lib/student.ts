@@ -39,6 +39,12 @@ export function formatMedium(medium: Medium): string {
   return MEDIUM_OPTIONS.find((m) => m.value === medium)?.label ?? medium;
 }
 
+export function normalizeLanguage(value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || trimmed.toLowerCase() === "na") return "";
+  return trimmed;
+}
+
 /** Map stored class to 1–12 when possible (handles legacy values like "10-A"). */
 export function parseStudentClass(value: string): string {
   const trimmed = value.trim();
@@ -107,6 +113,7 @@ export function filterStudents(students: Student[], query: string): Student[] {
       s.schoolName.toLowerCase().includes(lower) ||
       s.address.toLowerCase().includes(lower) ||
       formatMedium(s.medium).toLowerCase().includes(lower) ||
+      s.language.toLowerCase().includes(lower) ||
       s.qrToken.toLowerCase().includes(lower) ||
       s.id.toLowerCase().includes(lower) ||
       qrText.includes(lower)
@@ -126,6 +133,7 @@ export function normalizeStudentFields(student: Partial<Student> & { id: string 
     class: raw.class?.trim() || "—",
     gender,
     medium: parseMedium(raw.medium),
+    language: normalizeLanguage(raw.language),
     schoolName: raw.schoolName?.trim() || "",
     phone: raw.phone?.trim() || "",
     address: raw.address?.trim() || "",

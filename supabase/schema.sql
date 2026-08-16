@@ -42,6 +42,7 @@ create table if not exists public.students (
   class text not null,
   gender text not null default 'na' check (gender in ('male', 'female', 'other', 'na')),
   medium text not null default 'na' check (medium in ('english', 'kannada', 'marathi', 'na')),
+  language text not null default '',
   school_name text not null default '',
   phone text not null default '',
   address text not null default '',

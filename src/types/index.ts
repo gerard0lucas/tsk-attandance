@@ -55,6 +55,7 @@ export interface Student {
   class: string;
   gender: Gender;
   medium: Medium;
+  language: string;
   schoolName: string;
   phone: string;
   address: string;

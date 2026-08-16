@@ -104,6 +104,7 @@ interface AppState {
     class: string;
     gender: Student["gender"];
     medium?: Student["medium"];
+    language?: Student["language"];
     schoolName?: string;
     phone?: string;
     address?: string;
@@ -119,6 +120,7 @@ interface AppState {
         | "class"
         | "gender"
         | "medium"
+        | "language"
         | "schoolName"
         | "phone"
         | "address"

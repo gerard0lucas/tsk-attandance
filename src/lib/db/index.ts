@@ -720,6 +720,7 @@ export async function insertStudent(data: {
   class: string;
   gender: Student["gender"];
   medium?: Student["medium"];
+  language?: Student["language"];
   schoolName?: string;
   phone?: string;
   address?: string;
@@ -736,6 +737,7 @@ export async function insertStudent(data: {
       class: data.class,
       gender: data.gender,
       medium: data.medium ?? "na",
+      language: (data.language ?? "").trim(),
       school_name: data.schoolName ?? "",
       phone: data.phone ?? "",
       address: data.address ?? "",
@@ -774,6 +776,7 @@ export async function patchStudent(
     class: string;
     gender: Student["gender"];
     medium: Student["medium"];
+    language: Student["language"];
     schoolName: string;
     phone: string;
     address: string;
@@ -788,6 +791,7 @@ export async function patchStudent(
   if (data.class !== undefined) payload.class = data.class;
   if (data.gender !== undefined) payload.gender = data.gender;
   if (data.medium !== undefined) payload.medium = data.medium;
+  if (data.language !== undefined) payload.language = data.language.trim();
   if (data.schoolName !== undefined) payload.school_name = data.schoolName;
   if (data.phone !== undefined) payload.phone = data.phone;
   if (data.address !== undefined) payload.address = data.address;

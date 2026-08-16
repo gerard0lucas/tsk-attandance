@@ -101,7 +101,13 @@ export function validateLoginFields(
   return errors;
 }
 
-export type StudentFormFields = "name" | "rollNumber" | "studentClass" | "medium" | "phone" | "branchId";
+export type StudentFormFields =
+  | "name"
+  | "rollNumber"
+  | "studentClass"
+  | "medium"
+  | "phone"
+  | "branchId";
 
 export function validateStudentFields(
   fields: {

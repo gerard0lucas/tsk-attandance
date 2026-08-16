@@ -1,5 +1,5 @@
 import type { AttendanceRecord, Branch, BranchUser, Manager, Student } from "../../types";
-import { normalizeStudentName, parseGender, parseMedium } from "../student";
+import { normalizeLanguage, normalizeStudentName, parseGender, parseMedium } from "../student";
 import { sanitizeRollNumber } from "../validation";
 
 export type ProfileRow = {
@@ -39,6 +39,7 @@ export type StudentRow = {
   class: string;
   gender: Student["gender"];
   medium?: string;
+  language?: string;
   school_name?: string;
   phone?: string;
   address?: string;
@@ -137,6 +138,7 @@ export function toStudent(row: StudentRow): Student {
     class: row.class,
     gender: parseGender(row.gender),
     medium: parseMedium(row.medium),
+    language: normalizeLanguage(row.language),
     schoolName: row.school_name ?? "",
     phone: row.phone ?? "",
     address: row.address ?? "",

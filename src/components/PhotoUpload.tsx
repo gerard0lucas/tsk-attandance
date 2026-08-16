@@ -54,7 +54,7 @@ export function PhotoUpload({
         </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
-      <p className="text-xs text-mist">Optional. JPG or PNG, max 500 KB.</p>
+      <p className="text-xs text-mist">Optional. JPG or PNG, max 1 MB.</p>
     </div>
   );
 }

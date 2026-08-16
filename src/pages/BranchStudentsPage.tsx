@@ -24,6 +24,7 @@ import {
   normalizeStudentName,
   parseStudentClass,
 } from "../lib/student";
+import { schoolSelectOptions } from "../lib/belgaumSchools";
 import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
 import { useFormValidation } from "../hooks/useFormValidation";
 import { usePagedStudents } from "../hooks/usePagedStudents";
@@ -52,6 +53,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("na");
   const [medium, setMedium] = useState<Medium>("na");
+  const [language, setLanguage] = useState("");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -92,6 +94,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     setStudentClass("");
     setGender("na");
     setMedium("na");
+    setLanguage("");
     setSchoolName("");
     setPhone("");
     setAddress("");
@@ -117,6 +120,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
     setStudentClass(parseStudentClass(s.class));
     setGender(s.gender);
     setMedium(s.medium);
+    setLanguage(s.language);
     setSchoolName(s.schoolName);
     setPhone(s.phone);
     setAddress(s.address);
@@ -145,6 +149,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           class: studentClass.trim(),
           gender,
           medium,
+          language: language.trim(),
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           address: address.trim(),
@@ -160,6 +165,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
           class: studentClass.trim(),
           gender,
           medium,
+          language: language.trim(),
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           address: address.trim(),
@@ -223,6 +229,9 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
                   Roll: {s.rollNumber} · Class: {s.class}
                 </p>
                 <p className="text-sm text-mist">Medium: {formatMedium(s.medium)}</p>
+                {s.language && (
+                  <p className="text-sm text-mist">Language: {s.language}</p>
+                )}
                 {s.schoolName && (
                   <p className="text-sm text-mist">School: {s.schoolName}</p>
                 )}
@@ -333,9 +342,15 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
             options={MEDIUM_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
           />
           <Input
+            label="Language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          />
+          <Select
             label="School name"
             value={schoolName}
             onChange={(e) => setSchoolName(e.target.value)}
+            options={schoolSelectOptions(schoolName)}
           />
           <Input
             label="Phone number"

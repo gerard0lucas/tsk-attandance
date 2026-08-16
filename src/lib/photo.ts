@@ -1,4 +1,4 @@
-const MAX_BYTES = 500_000;
+const MAX_BYTES = 1_000_000; // 1 MB
 const MAX_DIMENSION = 320;
 
 export async function readStudentPhoto(file: File): Promise<string> {
@@ -6,7 +6,7 @@ export async function readStudentPhoto(file: File): Promise<string> {
     throw new Error("Please choose an image file (JPG, PNG, etc.).");
   }
   if (file.size > MAX_BYTES) {
-    throw new Error("Image is too large. Use a file under 500 KB.");
+    throw new Error("Image is too large. Use a file under 1 MB.");
   }
 
   const dataUrl = await new Promise<string>((resolve, reject) => {

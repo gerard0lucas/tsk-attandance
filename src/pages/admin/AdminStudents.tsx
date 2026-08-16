@@ -32,6 +32,7 @@ import {
   normalizeStudentName,
   parseStudentClass,
 } from "../../lib/student";
+import { schoolSelectOptions } from "../../lib/belgaumSchools";
 import { validateStudentFields, sanitizeRollNumber } from "../../lib/validation";
 import { useFormValidation } from "../../hooks/useFormValidation";
 import { usePagedStudents } from "../../hooks/usePagedStudents";
@@ -59,6 +60,7 @@ export function AdminStudents() {
   const [studentClass, setStudentClass] = useState("");
   const [gender, setGender] = useState<Gender>("na");
   const [medium, setMedium] = useState<Medium>("na");
+  const [language, setLanguage] = useState("");
   const [schoolName, setSchoolName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -97,6 +99,7 @@ export function AdminStudents() {
     setStudentClass("");
     setGender("na");
     setMedium("na");
+    setLanguage("");
     setSchoolName("");
     setPhone("");
     setAddress("");
@@ -131,6 +134,7 @@ export function AdminStudents() {
     setStudentClass(parseStudentClass(s.class));
     setGender(s.gender);
     setMedium(s.medium);
+    setLanguage(s.language);
     setSchoolName(s.schoolName);
     setPhone(s.phone);
     setAddress(s.address);
@@ -160,6 +164,7 @@ export function AdminStudents() {
           class: studentClass.trim(),
           gender,
           medium,
+          language: language.trim(),
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           address: address.trim(),
@@ -175,6 +180,7 @@ export function AdminStudents() {
           class: studentClass.trim(),
           gender,
           medium,
+          language: language.trim(),
           schoolName: schoolName.trim(),
           phone: phone.trim(),
           address: address.trim(),
@@ -384,9 +390,15 @@ export function AdminStudents() {
             options={MEDIUM_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
           />
           <Input
+            label="Language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          />
+          <Select
             label="School name"
             value={schoolName}
             onChange={(e) => setSchoolName(e.target.value)}
+            options={schoolSelectOptions(schoolName)}
           />
           <Input
             label="Phone number"
@@ -499,6 +511,9 @@ function StudentCard({
           <p className="font-medium text-cerulean">{student.name}</p>
           <p className="text-sm text-mist">Roll: {student.rollNumber} · Class: {student.class}</p>
           <p className="text-sm text-mist">Medium: {formatMedium(student.medium)}</p>
+          {student.language && (
+            <p className="text-sm text-mist">Language: {student.language}</p>
+          )}
           {student.schoolName && (
             <p className="text-sm text-mist">School: {student.schoolName}</p>
           )}

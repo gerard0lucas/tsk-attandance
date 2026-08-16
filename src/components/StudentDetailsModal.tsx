@@ -38,6 +38,7 @@ export function StudentDetailsModal({
             <Row label="Roll" value={student.rollNumber} />
             <Row label="Class" value={student.class} />
             <Row label="Medium" value={formatMedium(student.medium)} />
+            <Row label="Language" value={student.language} />
             <Row label="School" value={student.schoolName} />
             <Row label="Phone" value={student.phone} />
             <Row label="Address" value={student.address} />

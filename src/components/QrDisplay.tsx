@@ -65,6 +65,12 @@ export function QrDisplay({ student, branchName, variant = "default" }: QrDispla
             <dd className="text-cerulean">{student.rollNumber}</dd>
             <dt>Class</dt>
             <dd className="text-cerulean">{student.class}</dd>
+            {student.language && (
+              <>
+                <dt>Language</dt>
+                <dd className="text-cerulean">{student.language}</dd>
+              </>
+            )}
             {student.schoolName && (
               <>
                 <dt>School</dt>
