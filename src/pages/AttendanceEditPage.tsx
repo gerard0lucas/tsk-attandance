@@ -157,6 +157,8 @@ export function AttendanceEditPage() {
   const getBranch = useStore((s) => s.getBranch);
   const getMarkedByName = useStore((s) => s.getMarkedByName);
   const markAttendanceForDate = useStore((s) => s.markAttendanceForDate);
+  const markAttendanceBulkForClassDate = useStore((s) => s.markAttendanceBulkForClassDate);
+  const clearAttendanceBulkForClassDate = useStore((s) => s.clearAttendanceBulkForClassDate);
   const deleteAttendance = useStore((s) => s.deleteAttendance);
 
   // Peek once per mount cycle (Strict Mode safe); clear after scroll restore.
@@ -194,6 +196,7 @@ export function AttendanceEditPage() {
   );
   const [rangeStudent, setRangeStudent] = useState<Student | null>(null);
   const [highlightStudentId, setHighlightStudentId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const pendingScrollRestore = useRef(
     restored
       ? { scrollY: restored.scrollY, focusStudentId: restored.focusStudentId }
@@ -474,6 +477,89 @@ export function AttendanceEditPage() {
     }
   };
 
+  const bulkMarkClassPresent = async () => {
+    if (!session || !branchId || classFilter === "all" || bulkBusy) return;
+    const from = isRange ? range.from : filterDate;
+    const to = isRange ? range.to : filterDate;
+    const periodLabel = isRange
+      ? formatDateRangeLabel(from, to)
+      : formatReportDate(filterDate);
+    const result = await Swal.fire({
+      title: "Bulk mark class present?",
+      text: isRange
+        ? `Mark all students in class ${classFilter} present for every day in ${periodLabel}? Existing present days are skipped. This is a bulk action for the whole class.`
+        : `Mark all absent students in class ${classFilter} present for ${periodLabel}? (${absentTotal} absent). This is a bulk action for the whole class.`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Bulk mark present",
+      confirmButtonColor: "#00303f",
+      cancelButtonColor: "#7a9d96",
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+
+    setBulkBusy(true);
+    try {
+      const res = await markAttendanceBulkForClassDate({
+        branchId,
+        className: classFilter,
+        from,
+        to,
+        markedById: session.userId,
+      });
+      if (res.ok) {
+        toastSuccess(res.message, "Bulk present");
+        void reload();
+      } else {
+        toastError(res.message, "Couldn't mark");
+        void reload();
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const bulkMarkClassAbsent = async () => {
+    if (!session || !branchId || classFilter === "all" || bulkBusy) return;
+    const from = isRange ? range.from : filterDate;
+    const to = isRange ? range.to : filterDate;
+    const periodLabel = isRange
+      ? formatDateRangeLabel(from, to)
+      : formatReportDate(filterDate);
+    const result = await Swal.fire({
+      title: "Bulk mark class absent?",
+      text: isRange
+        ? `Clear all attendance for class ${classFilter} across ${periodLabel}? This is a bulk action for the whole class.`
+        : `Remove attendance for all present students in class ${classFilter} on ${periodLabel}? (${presentTotal} present). This is a bulk action for the whole class.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Bulk mark absent",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#7a9d96",
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+
+    setBulkBusy(true);
+    try {
+      const res = await clearAttendanceBulkForClassDate({
+        branchId,
+        className: classFilter,
+        from,
+        to,
+      });
+      if (res.ok) {
+        toastSuccess(res.message, "Bulk absent");
+        void reload();
+      } else {
+        toastError(res.message, "Couldn't update");
+        void reload();
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   if (!branchId) {
     return (
       <p className="text-sm text-mist">
@@ -617,12 +703,46 @@ export function AttendanceEditPage() {
           <span className="text-mist">{dateLabel}</span>
           {loading && <span className="text-mist">Loading…</span>}
         </div>
-        {isRange && (
-          <p className="mt-2 text-xs text-mist">
-            Range view shows days present out of {rangeDayCount}. Switch to single day to mark
-            present or absent.
-          </p>
-        )}
+
+        <div className="mt-4 rounded border border-morning bg-morning/20 p-3 sm:p-4">
+          <div className="mb-2">
+            <p className="text-sm font-semibold text-cerulean">Bulk attendance</p>
+            <p className="text-xs text-mist">
+              {classFilter === "all"
+                ? `Select a class above to mark the whole class present or absent ${isRange ? "for every day in this range" : "for this date"}.`
+                : isRange
+                  ? `Applies to every student in class ${classFilter} across ${dateLabel} (${rangeDayCount} day${rangeDayCount === 1 ? "" : "s"}).`
+                  : `Applies to every student in class ${classFilter} on ${dateLabel}.`}
+            </p>
+          </div>
+          {classFilter !== "all" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                disabled={
+                  bulkBusy ||
+                  loading ||
+                  (isRange
+                    ? scopedRows.every((r) => r.daysPresent >= rangeDayCount)
+                    : absentTotal === 0)
+                }
+                onClick={() => void bulkMarkClassPresent()}
+              >
+                {bulkBusy
+                  ? "Working…"
+                  : `Bulk mark class ${classFilter} present`}
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={bulkBusy || loading || presentTotal === 0}
+                onClick={() => void bulkMarkClassAbsent()}
+              >
+                Bulk mark class {classFilter} absent
+              </Button>
+            </div>
+          )}
+        </div>
         {loadError && <p className="mt-2 text-sm text-red-600">{loadError}</p>}
       </Card>
 

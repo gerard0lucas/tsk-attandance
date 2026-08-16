@@ -160,6 +160,29 @@ interface AppState {
     skipped: number;
     createdIds: string[];
   }>;
+  markAttendanceBulkForClassDate: (params: {
+    branchId: string;
+    className: string;
+    from: string;
+    to: string;
+    markedById: string;
+  }) => Promise<{
+    ok: boolean;
+    message: string;
+    marked: number;
+    skipped: number;
+    records: AttendanceRecord[];
+  }>;
+  clearAttendanceBulkForClassDate: (params: {
+    branchId: string;
+    className: string;
+    from: string;
+    to: string;
+  }) => Promise<{
+    ok: boolean;
+    message: string;
+    cleared: number;
+  }>;
   clearAttendanceInRange: (
     studentId: string,
     from: string,
@@ -599,6 +622,203 @@ export const useStore = create<AppState>()((set, get) => ({
         skipped,
         createdIds,
       };
+    }),
+
+  markAttendanceBulkForClassDate: ({ branchId, className, from, to, markedById }) =>
+    runAction(async () => {
+      const session = get().session;
+      const branchErr = branchAccessError(session, branchId);
+      if (branchErr) {
+        return { ok: false, message: branchErr, marked: 0, skipped: 0, records: [] };
+      }
+
+      const trimmedClass = className.trim();
+      if (!trimmedClass || trimmedClass === "all") {
+        return {
+          ok: false,
+          message: "Select a class before bulk marking.",
+          marked: 0,
+          skipped: 0,
+          records: [],
+        };
+      }
+
+      const range = normalizeDateRange(from, to);
+      const today = todayKey();
+      if (range.from > today) {
+        return {
+          ok: false,
+          message: "Future dates cannot be marked present.",
+          marked: 0,
+          skipped: 0,
+          records: [],
+        };
+      }
+
+      const keys = dateKeysInRange(range.from, range.to).filter((d) => d <= today);
+      if (keys.length === 0) {
+        return {
+          ok: false,
+          message: "Select a valid date range.",
+          marked: 0,
+          skipped: 0,
+          records: [],
+        };
+      }
+      if (keys.length > MAX_ATTENDANCE_RANGE_DAYS) {
+        return {
+          ok: false,
+          message: `Choose at most ${MAX_ATTENDANCE_RANGE_DAYS} days at a time.`,
+          marked: 0,
+          skipped: 0,
+          records: [],
+        };
+      }
+
+      const students = await db.listStudentsByBranch(branchId, { activeOnly: true });
+      const inClass = students.filter((s) => s.class === trimmedClass);
+      if (inClass.length === 0) {
+        return {
+          ok: false,
+          message: `No active students in class ${trimmedClass}.`,
+          marked: 0,
+          skipped: 0,
+          records: [],
+        };
+      }
+
+      const existing = await db.listAttendanceInRange({
+        from: keys[0]!,
+        to: keys[keys.length - 1]!,
+        branchId,
+      });
+      const presentSet = new Set(existing.map((r) => `${r.studentId}|${r.date}`));
+      const rows: {
+        studentId: string;
+        branchId: string;
+        markedById: string;
+        date: string;
+      }[] = [];
+      let skipped = 0;
+      for (const student of inClass) {
+        for (const date of keys) {
+          if (presentSet.has(`${student.id}|${date}`)) {
+            skipped += 1;
+          } else {
+            rows.push({
+              studentId: student.id,
+              branchId,
+              markedById,
+              date,
+            });
+          }
+        }
+      }
+
+      if (rows.length === 0) {
+        return {
+          ok: true,
+          message: `Class ${trimmedClass}: all attendance already marked for ${formatDateRangeLabel(keys[0]!, keys[keys.length - 1]!)}.`,
+          marked: 0,
+          skipped,
+          records: [],
+        };
+      }
+
+      try {
+        const records = await db.insertAttendanceBulk(rows);
+        const parts = [
+          `${records.length} marked present`,
+          skipped > 0 ? `${skipped} already present` : null,
+        ].filter(Boolean);
+        return {
+          ok: true,
+          message: `Class ${trimmedClass}: ${parts.join(", ")} · ${formatDateRangeLabel(keys[0]!, keys[keys.length - 1]!)}.`,
+          marked: records.length,
+          skipped,
+          records,
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          message: toUserMessage(e, "Couldn't mark attendance. Please try again."),
+          marked: 0,
+          skipped,
+          records: [],
+        };
+      }
+    }),
+
+  clearAttendanceBulkForClassDate: ({ branchId, className, from, to }) =>
+    runAction(async () => {
+      const session = get().session;
+      const branchErr = branchAccessError(session, branchId);
+      if (branchErr) return { ok: false, message: branchErr, cleared: 0 };
+
+      const trimmedClass = className.trim();
+      if (!trimmedClass || trimmedClass === "all") {
+        return {
+          ok: false,
+          message: "Select a class before bulk clearing.",
+          cleared: 0,
+        };
+      }
+
+      const range = normalizeDateRange(from, to);
+      const keys = dateKeysInRange(range.from, range.to);
+      if (keys.length === 0) {
+        return { ok: false, message: "Select a valid date range.", cleared: 0 };
+      }
+      if (keys.length > MAX_ATTENDANCE_RANGE_DAYS) {
+        return {
+          ok: false,
+          message: `Choose at most ${MAX_ATTENDANCE_RANGE_DAYS} days at a time.`,
+          cleared: 0,
+        };
+      }
+
+      const students = await db.listStudentsByBranch(branchId, { activeOnly: true });
+      const inClassIds = new Set(
+        students.filter((s) => s.class === trimmedClass).map((s) => s.id),
+      );
+      if (inClassIds.size === 0) {
+        return {
+          ok: false,
+          message: `No active students in class ${trimmedClass}.`,
+          cleared: 0,
+        };
+      }
+
+      const existing = await db.listAttendanceInRange({
+        from: keys[0]!,
+        to: keys[keys.length - 1]!,
+        branchId,
+      });
+      const toClearIds = existing
+        .filter((r) => inClassIds.has(r.studentId))
+        .map((r) => r.id);
+      if (toClearIds.length === 0) {
+        return {
+          ok: true,
+          message: `No attendance to clear in class ${trimmedClass} for ${formatDateRangeLabel(keys[0]!, keys[keys.length - 1]!)}.`,
+          cleared: 0,
+        };
+      }
+
+      try {
+        const cleared = await db.removeAttendanceByIds(toClearIds);
+        return {
+          ok: true,
+          message: `Class ${trimmedClass}: ${cleared} attendance record${cleared === 1 ? "" : "s"} cleared · ${formatDateRangeLabel(keys[0]!, keys[keys.length - 1]!)}.`,
+          cleared,
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          message: toUserMessage(e, "Couldn't update attendance. Please try again."),
+          cleared: 0,
+        };
+      }
     }),
 
   clearAttendanceInRange: (studentId, from, to, studentHint) =>

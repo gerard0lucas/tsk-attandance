@@ -838,6 +838,78 @@ export async function insertAttendance(data: {
   return toAttendance(row as AttendanceRow);
 }
 
+const ATTENDANCE_BULK_CHUNK = 100;
+
+/** Insert many attendance rows (skips empty input). Caller should avoid duplicates. */
+export async function insertAttendanceBulk(
+  rows: {
+    studentId: string;
+    branchId: string;
+    markedById: string;
+    date: string;
+  }[],
+): Promise<AttendanceRecord[]> {
+  if (rows.length === 0) return [];
+  const created: AttendanceRecord[] = [];
+  for (let i = 0; i < rows.length; i += ATTENDANCE_BULK_CHUNK) {
+    const chunk = rows.slice(i, i + ATTENDANCE_BULK_CHUNK);
+    const { data, error } = await supabase
+      .from("attendance")
+      .insert(
+        chunk.map((r) => ({
+          student_id: r.studentId,
+          branch_id: r.branchId,
+          manager_id: r.markedById,
+          date: r.date,
+        })),
+      )
+      .select();
+    if (error) throw error;
+    for (const row of data ?? []) {
+      created.push(toAttendance(row as AttendanceRow));
+    }
+  }
+  return created;
+}
+
+/** Delete attendance rows by id (chunked). */
+export async function removeAttendanceByIds(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  let cleared = 0;
+  for (let i = 0; i < ids.length; i += ATTENDANCE_BULK_CHUNK) {
+    const chunk = ids.slice(i, i + ATTENDANCE_BULK_CHUNK);
+    const { data, error } = await supabase
+      .from("attendance")
+      .delete()
+      .in("id", chunk)
+      .select("id");
+    if (error) throw error;
+    cleared += data?.length ?? 0;
+  }
+  return cleared;
+}
+
+/** Delete attendance for many students on one date. */
+export async function removeAttendanceForStudentsOnDate(
+  studentIds: string[],
+  date: string,
+): Promise<number> {
+  if (studentIds.length === 0) return 0;
+  let cleared = 0;
+  for (let i = 0; i < studentIds.length; i += ATTENDANCE_BULK_CHUNK) {
+    const chunk = studentIds.slice(i, i + ATTENDANCE_BULK_CHUNK);
+    const { data, error } = await supabase
+      .from("attendance")
+      .delete()
+      .eq("date", date)
+      .in("student_id", chunk)
+      .select("id");
+    if (error) throw error;
+    cleared += data?.length ?? 0;
+  }
+  return cleared;
+}
+
 export async function removeAttendance(id: string): Promise<void> {
   const { error } = await supabase.from("attendance").delete().eq("id", id);
   if (error) throw error;
