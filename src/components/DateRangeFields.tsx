@@ -8,6 +8,9 @@ type DateRangeFieldsProps = {
   onToChange: (value: string) => void;
   max?: string;
   className?: string;
+  required?: boolean;
+  fromError?: string;
+  toError?: string;
 };
 
 /** Shared From / To date inputs for reports, dashboard, and attendance. */
@@ -18,6 +21,9 @@ export function DateRangeFields({
   onToChange,
   max = todayKey(),
   className = "",
+  required = false,
+  fromError,
+  toError,
 }: DateRangeFieldsProps) {
   return (
     <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${className}`}>
@@ -26,6 +32,8 @@ export function DateRangeFields({
         type="date"
         value={from}
         max={max}
+        required={required}
+        error={fromError}
         onChange={(e) => onFromChange(e.target.value)}
       />
       <Input
@@ -33,6 +41,8 @@ export function DateRangeFields({
         type="date"
         value={to}
         max={max}
+        required={required}
+        error={toError}
         onChange={(e) => onToChange(e.target.value)}
       />
     </div>

@@ -26,18 +26,15 @@ import {
 import {
   dailyAttendanceTrend,
   formatAttendanceTrendSubtitle,
-  REPORT_CHART_COLORS,
 } from "../../lib/reportAnalytics";
 import {
   dashboardAttendanceRange,
+  formatDateRangeLabel,
+  normalizeDateRange,
   type DashboardAttendancePeriod,
 } from "../../lib/reportRanges";
 import { APP_NAME } from "../../lib/branding";
-import {
-  countActiveStudentsByBranch,
-  listAttendanceInRange,
-  listStudentsByBranch,
-} from "../../lib/db";
+import { listAttendanceInRange, listStudentsByBranch } from "../../lib/db";
 import { AttendanceOverviewTable } from "../../components/dashboard/AttendanceOverviewTable";
 import { DashboardKpiCard } from "../../components/dashboard/DashboardKpiCard";
 import { DashboardPanel } from "../../components/dashboard/DashboardPanel";
@@ -49,7 +46,6 @@ import { DateRangeFields } from "../../components/DateRangeFields";
 import { Button } from "../../components/ui/Button";
 import { Select } from "../../components/ui/Select";
 import type { AttendanceRecord, Student } from "../../types";
-import { todayKey } from "../../lib/dates";
 
 const PERIOD_OPTIONS: { value: DashboardAttendancePeriod; label: string }[] = [
   { value: "today", label: "Today" },
@@ -66,57 +62,91 @@ export function AdminOverview() {
   const branches = useStore((s) => s.branches);
 
   const [period, setPeriod] = useState<DashboardAttendancePeriod>("today");
-  const [customFrom, setCustomFrom] = useState(() => todayKey());
-  const [customTo, setCustomTo] = useState(() => todayKey());
-  const [branchFilter, setBranchFilter] = useState<"all" | string>("all");
+  const initialRange = dashboardAttendanceRange("today");
+  const [rangeFrom, setRangeFrom] = useState(initialRange.from);
+  const [rangeTo, setRangeTo] = useState(initialRange.to);
+  const [branchFilter, setBranchFilter] = useState("");
   const [schoolFilter, setSchoolFilter] = useState<"all" | string>("all");
   const [classFilter, setClassFilter] = useState<"all" | string>("all");
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
-  const [branchCounts, setBranchCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [schoolPage, setSchoolPage] = useState(1);
+  const [showFilterErrors, setShowFilterErrors] = useState(false);
+
+  useEffect(() => {
+    if (!branchFilter && branches[0]?.id) {
+      setBranchFilter(branches[0].id);
+    }
+  }, [branches, branchFilter]);
 
   const filters: DashboardFilters = useMemo(
-    () => ({ branch: branchFilter, school: schoolFilter, class: classFilter }),
+    () => ({
+      branch: branchFilter || "all",
+      school: schoolFilter,
+      class: classFilter,
+    }),
     [branchFilter, schoolFilter, classFilter],
   );
 
-  const { from, to, subtitle } = useMemo(
-    () => dashboardAttendanceRange(period, { from: customFrom, to: customTo }),
-    [period, customFrom, customTo],
+  const range = useMemo(
+    () => normalizeDateRange(rangeFrom, rangeTo),
+    [rangeFrom, rangeTo],
   );
+  const from = range.from;
+  const to = range.to;
+
+  const subtitle = useMemo(() => {
+    if (period === "custom") {
+      return `Custom · ${formatDateRangeLabel(from, to)}`;
+    }
+    return dashboardAttendanceRange(period).subtitle;
+  }, [period, from, to]);
+
+  const branchError =
+    showFilterErrors && !branchFilter ? "Branch is required." : undefined;
+  const fromError =
+    showFilterErrors && !rangeFrom ? "From date is required." : undefined;
+  const toError = showFilterErrors && !rangeTo ? "To date is required." : undefined;
+  const filtersReady = Boolean(branchFilter && rangeFrom && rangeTo);
 
   const onPeriodChange = (next: DashboardAttendancePeriod) => {
-    if (next === "custom" && period !== "custom") {
-      const current = dashboardAttendanceRange(period);
-      setCustomFrom(current.from);
-      setCustomTo(current.to);
+    if (next !== "custom") {
+      const current = dashboardAttendanceRange(next);
+      setRangeFrom(current.from);
+      setRangeTo(current.to);
     }
     setPeriod(next);
   };
 
+  const onFromChange = (value: string) => {
+    setRangeFrom(value);
+    setPeriod("custom");
+  };
+
+  const onToChange = (value: string) => {
+    setRangeTo(value);
+    setPeriod("custom");
+  };
+
   useEffect(() => {
+    if (!filtersReady) {
+      setAttendance([]);
+      setStudents([]);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     void (async () => {
       try {
-        const branchId = branchFilter === "all" ? undefined : branchFilter;
-        const [records, counts, branchStudents] = await Promise.all([
-          listAttendanceInRange({ from, to, branchId }),
-          countActiveStudentsByBranch(),
-          branchId
-            ? listStudentsByBranch(branchId, { activeOnly: true })
-            : Promise.resolve([] as Student[]),
+        const [records, branchStudents] = await Promise.all([
+          listAttendanceInRange({ from, to, branchId: branchFilter }),
+          listStudentsByBranch(branchFilter, { activeOnly: true }),
         ]);
         if (cancelled) return;
         setAttendance(records);
-        setBranchCounts(counts);
         setStudents(branchStudents);
-        if (branchFilter === "all") {
-          setSchoolFilter("all");
-          setClassFilter("all");
-        }
       } catch {
         if (!cancelled) {
           setAttendance([]);
@@ -129,16 +159,10 @@ export function AdminOverview() {
     return () => {
       cancelled = true;
     };
-  }, [from, to, branchFilter]);
-
-  /** Active enrollment used for trends — count only, no stub rows. */
-  const totalActiveEnrollment = useMemo(
-    () => Object.values(branchCounts).reduce((a, b) => a + b, 0),
-    [branchCounts],
-  );
+  }, [filtersReady, from, to, branchFilter]);
 
   const schoolOptions = useMemo(() => {
-    if (branchFilter === "all") return [];
+    if (!branchFilter) return [];
     const scoped = scopeActiveStudents(students, { ...filters, school: "all" });
     return [
       ...new Set(scoped.map((s) => s.schoolName.trim() || "No school listed")),
@@ -146,13 +170,13 @@ export function AdminOverview() {
   }, [students, filters, branchFilter]);
 
   const classOptions = useMemo(() => {
-    if (branchFilter === "all") return [];
+    if (!branchFilter) return [];
     const scoped = scopeActiveStudents(students, { ...filters, class: "all" });
     return [...new Set(scoped.map((s) => s.class.trim()).filter(Boolean))].sort();
   }, [students, filters, branchFilter]);
 
   const scopedStudents = useMemo(() => {
-    if (branchFilter === "all") return [];
+    if (!branchFilter) return [];
     return scopeActiveStudents(students, filters);
   }, [branchFilter, students, filters]);
 
@@ -162,22 +186,17 @@ export function AdminOverview() {
   );
 
   const periodRecords = useMemo(() => {
-    if (branchFilter === "all") return rawPeriodRecords;
+    if (!branchFilter) return [];
     const ids = new Set(scopedStudents.map((s) => s.id));
     return scopeRecords(rawPeriodRecords, ids);
   }, [rawPeriodRecords, scopedStudents, branchFilter]);
 
   const summary = useMemo(() => {
-    if (branchFilter === "all") {
-      const present = new Set(periodRecords.map((r) => r.studentId)).size;
-      return {
-        totalStudents: totalActiveEnrollment,
-        present,
-        absent: Math.max(totalActiveEnrollment - present, 0),
-      };
+    if (!branchFilter) {
+      return { totalStudents: 0, present: 0, absent: 0 };
     }
     return periodSummary(periodRecords, scopedStudents);
-  }, [branchFilter, totalActiveEnrollment, periodRecords, scopedStudents]);
+  }, [branchFilter, periodRecords, scopedStudents]);
 
   const attendancePercent =
     summary.totalStudents > 0
@@ -185,43 +204,19 @@ export function AdminOverview() {
       : 0;
 
   const branchRows = useMemo(() => {
-    if (branchFilter === "all") {
-      const presentByBranch = new Map<string, Set<string>>();
-      for (const r of periodRecords) {
-        let set = presentByBranch.get(r.branchId);
-        if (!set) {
-          set = new Set();
-          presentByBranch.set(r.branchId, set);
-        }
-        set.add(r.studentId);
-      }
-      return branches.map((branch) => {
-        const total = branchCounts[branch.id] ?? 0;
-        const present = presentByBranch.get(branch.id)?.size ?? 0;
-        return {
-          name: branch.name,
-          meta: branch.city || undefined,
-          total,
-          present,
-          absent: Math.max(total - present, 0),
-          percent: total > 0 ? Math.round((present / total) * 1000) / 10 : 0,
-        };
-      });
-    }
+    if (!branchFilter) return [];
     return branchOverviewRows(branches, students, periodRecords, filters);
-  }, [branchFilter, periodRecords, branches, branchCounts, students, filters]);
+  }, [branchFilter, periodRecords, branches, students, filters]);
 
   const schoolRows = useMemo(
     () =>
-      branchFilter === "all"
-        ? []
-        : schoolOverviewRows(students, periodRecords, filters),
+      !branchFilter ? [] : schoolOverviewRows(students, periodRecords, filters),
     [branchFilter, students, periodRecords, filters],
   );
 
   useEffect(() => {
     setSchoolPage(1);
-  }, [branchFilter, schoolFilter, classFilter, period]);
+  }, [branchFilter, schoolFilter, classFilter, period, from, to]);
 
   const schoolTotalPages = Math.max(1, Math.ceil(schoolRows.length / SCHOOL_PAGE_SIZE));
   const pagedSchoolRows = useMemo(() => {
@@ -232,20 +227,14 @@ export function AdminOverview() {
 
   const classRows = useMemo(
     () =>
-      branchFilter === "all"
-        ? []
-        : classOverviewRows(students, periodRecords, filters),
+      !branchFilter ? [] : classOverviewRows(students, periodRecords, filters),
     [branchFilter, students, periodRecords, filters],
   );
 
   const dailyTrend = useMemo(() => {
-    if (branchFilter === "all") {
-      // only length matters for absent calc
-      const countProxy = { length: totalActiveEnrollment } as unknown as Student[];
-      return dailyAttendanceTrend(periodRecords, from, to, countProxy);
-    }
+    if (!branchFilter) return [];
     return dailyAttendanceTrend(periodRecords, from, to, scopedStudents);
-  }, [branchFilter, totalActiveEnrollment, periodRecords, from, to, scopedStudents]);
+  }, [branchFilter, periodRecords, from, to, scopedStudents]);
 
   const trendSubtitle = useMemo(
     () => formatAttendanceTrendSubtitle(dailyTrend),
@@ -253,50 +242,31 @@ export function AdminOverview() {
   );
 
   const presentAbsent = useMemo(() => {
-    if (branchFilter === "all") {
-      if (totalActiveEnrollment === 0) return [];
-      return [
-        {
-          name: "Present",
-          value: summary.present,
-          fill: REPORT_CHART_COLORS.cerulean,
-        },
-        {
-          name: "Absent",
-          value: summary.absent,
-          fill: REPORT_CHART_COLORS.morning,
-        },
-      ];
-    }
+    if (!branchFilter) return [];
     return presentAbsentForPeriod(periodRecords, scopedStudents);
-  }, [branchFilter, totalActiveEnrollment, summary, periodRecords, scopedStudents]);
+  }, [branchFilter, periodRecords, scopedStudents]);
 
   const genderEnrollment = useMemo(
-    () =>
-      branchFilter === "all"
-        ? []
-        : genderEnrollmentForBranch(students, branchFilter),
+    () => (!branchFilter ? [] : genderEnrollmentForBranch(students, branchFilter)),
     [students, branchFilter],
   );
 
   const genderAttendance = useMemo(
     () =>
-      branchFilter === "all"
-        ? []
-        : genderAttendanceForPeriod(periodRecords, scopedStudents),
+      !branchFilter ? [] : genderAttendanceForPeriod(periodRecords, scopedStudents),
     [branchFilter, periodRecords, scopedStudents],
   );
 
   const schoolRanks = useMemo(
     () =>
-      branchFilter === "all"
+      !branchFilter
         ? { top: [], bottom: [] }
         : schoolAttendanceRanks(students, periodRecords, filters),
     [branchFilter, students, periodRecords, filters],
   );
 
   const schoolSlices = useMemo(
-    () => (branchFilter === "all" ? [] : studentsBySchoolSlices(scopedStudents)),
+    () => (!branchFilter ? [] : studentsBySchoolSlices(scopedStudents)),
     [branchFilter, scopedStudents],
   );
 
@@ -327,7 +297,7 @@ export function AdminOverview() {
               Branch Attendance
             </h1>
             <p className="mt-1 text-sm text-mist">
-              {APP_NAME} · {subtitle}
+              {APP_NAME} · {filtersReady ? subtitle : "Select required filters"}
               {loading ? " · Loading…" : ""}
             </p>
           </div>
@@ -348,14 +318,18 @@ export function AdminOverview() {
           />
           <Select
             label="Branch"
+            required
             value={branchFilter}
+            error={branchError}
             onChange={(e) => {
-              setBranchFilter(e.target.value as "all" | string);
+              setBranchFilter(e.target.value);
               setSchoolFilter("all");
               setClassFilter("all");
+              setShowFilterErrors(true);
             }}
+            onBlur={() => setShowFilterErrors(true)}
             options={[
-              { value: "all", label: "All branches" },
+              { value: "", label: "Select branch" },
               ...branches.map((b) => ({ value: b.id, label: b.name })),
             ]}
           />
@@ -366,7 +340,7 @@ export function AdminOverview() {
             options={[
               {
                 value: "all",
-                label: branchFilter === "all" ? "Select a branch first" : "All schools",
+                label: branchFilter ? "All schools" : "Select a branch first",
               },
               ...schoolOptions.map((s) => ({ value: s, label: s })),
             ]}
@@ -378,25 +352,38 @@ export function AdminOverview() {
             options={[
               {
                 value: "all",
-                label: branchFilter === "all" ? "Select a branch first" : "All classes",
+                label: branchFilter ? "All classes" : "Select a branch first",
               },
               ...classOptions.map((c) => ({ value: c, label: c })),
             ]}
           />
         </div>
 
-        {period === "custom" && (
-          <div className="mt-3">
-            <DateRangeFields
-              from={customFrom}
-              to={customTo}
-              onFromChange={(value) => setCustomFrom(value || todayKey())}
-              onToChange={(value) => setCustomTo(value || todayKey())}
-            />
-          </div>
-        )}
+        <div className="mt-3">
+          <DateRangeFields
+            required
+            from={rangeFrom}
+            to={rangeTo}
+            fromError={fromError}
+            toError={toError}
+            onFromChange={(value) => {
+              onFromChange(value);
+              setShowFilterErrors(true);
+            }}
+            onToChange={(value) => {
+              onToChange(value);
+              setShowFilterErrors(true);
+            }}
+          />
+        </div>
       </div>
 
+      {!filtersReady ? (
+        <p className="rounded border border-morning bg-white px-4 py-6 text-center text-sm text-mist">
+          Select a branch and date range to load dashboard data.
+        </p>
+      ) : (
+        <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
         <DashboardKpiCard
           label="Total Students"
@@ -472,14 +459,14 @@ export function AdminOverview() {
           className="xl:col-span-5"
           title="School-wise summary"
           subtitle={
-            branchFilter === "all" ? "Select a branch to see schools" : "Attendance by school"
+            !branchFilter ? "Select a branch to see schools" : "Attendance by school"
           }
         >
           <AttendanceOverviewTable
             rows={pagedSchoolRows}
             nameLabel="School"
             emptyLabel={
-              branchFilter === "all"
+              !branchFilter
                 ? "Select a branch to load school breakdown."
                 : "Add school names to student records."
             }
@@ -532,7 +519,7 @@ export function AdminOverview() {
           <DonutChart
             data={schoolSlices}
             emptyLabel={
-              branchFilter === "all"
+              !branchFilter
                 ? "Select a branch to load enrollment."
                 : "No school data for current filters."
             }
@@ -550,7 +537,7 @@ export function AdminOverview() {
             rows={classRows}
             nameLabel="Class"
             emptyLabel={
-              branchFilter === "all"
+              !branchFilter
                 ? "Select a branch to load class breakdown."
                 : "No class data for current filters."
             }
@@ -561,13 +548,13 @@ export function AdminOverview() {
           className="xl:col-span-3"
           title="Male & female students"
           subtitle={
-            branchFilter === "all" ? "Select a branch" : "Selected branch"
+            !branchFilter ? "Select a branch" : "Selected branch"
           }
         >
           <DonutChart
             data={genderEnrollment}
             emptyLabel={
-              branchFilter === "all"
+              !branchFilter
                 ? "Select a branch for gender enrollment."
                 : "No students in scope."
             }
@@ -582,7 +569,7 @@ export function AdminOverview() {
           <DonutChart
             data={genderAttendance}
             emptyLabel={
-              branchFilter === "all"
+              !branchFilter
                 ? "Select a branch for gender attendance."
                 : "No attendance in period."
             }
@@ -595,7 +582,7 @@ export function AdminOverview() {
           <RankingBarChart
             data={topSchoolBars}
             emptyLabel={
-              branchFilter === "all"
+              !branchFilter
                 ? "Select a branch for school rankings."
                 : "Not enough school data."
             }
@@ -606,7 +593,7 @@ export function AdminOverview() {
           <RankingBarChart
             data={bottomSchoolBars}
             emptyLabel={
-              branchFilter === "all"
+              !branchFilter
                 ? "Select a branch for school rankings."
                 : "Not enough school data."
             }
@@ -615,9 +602,12 @@ export function AdminOverview() {
         </DashboardPanel>
       </div>
 
+        </>
+      )}
+
       <p className="text-xs text-mist">
         Attendance is tracked when students scan QR or are marked present by staff.
-        School and class filters load after you select a branch (keeps large orgs fast).
+        Branch and date range are required. School and class filters load after you select a branch.
       </p>
     </div>
   );

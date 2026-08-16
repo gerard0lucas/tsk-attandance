@@ -14,14 +14,21 @@ export function Select({
   className = "",
   wrapperClassName = "",
   id,
+  required,
   ...props
 }: SelectProps) {
   const selectId = id ?? label?.toLowerCase().replace(/\s+/g, "-");
   return (
     <label className={`flex w-full flex-col gap-2 text-left ${wrapperClassName}`}>
-      {label && <span className="text-sm font-medium text-cerulean">{label}</span>}
+      {label && (
+        <span className="text-sm font-medium text-cerulean">
+          {label}
+          {required ? <span className="text-red-600"> *</span> : null}
+        </span>
+      )}
       <select
         id={selectId}
+        required={required}
         aria-invalid={error ? true : undefined}
         className={`block w-full min-h-[44px] rounded border bg-white px-3 py-2 text-cerulean outline-none focus:ring-1 ${
           error

@@ -12,12 +12,14 @@ export function Input({
   className = "",
   wrapperClassName = "",
   id,
+  required,
   ...props
 }: InputProps) {
   const inputId = id ?? label?.toLowerCase().replace(/\s+/g, "-");
   const field = (
     <input
       id={inputId}
+      required={required}
       aria-invalid={error ? true : undefined}
       className={`block w-full min-h-[44px] rounded border bg-white px-3 py-2 text-cerulean outline-none placeholder:text-mist/80 focus:ring-1 ${
         error
@@ -39,7 +41,10 @@ export function Input({
 
   return (
     <label className={`flex w-full flex-col gap-2 text-left ${wrapperClassName}`}>
-      <span className="text-sm font-medium text-cerulean">{label}</span>
+      <span className="text-sm font-medium text-cerulean">
+        {label}
+        {required ? <span className="text-red-600"> *</span> : null}
+      </span>
       {field}
       {error && <span className="text-xs text-red-600">{error}</span>}
     </label>
