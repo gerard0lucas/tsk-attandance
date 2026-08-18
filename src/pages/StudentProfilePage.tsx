@@ -22,7 +22,9 @@ import {
   parseStudentClass,
 } from "../lib/student";
 import { schoolSelectOptions } from "../lib/belgaumSchools";
-import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
+import { sanitizeRollNumber, hasFormErrors } from "../lib/validation";
+import { toastRollNumberInUse, validateStudentFormAsync } from "../lib/studentFormValidation";
+import { toUserMessage } from "../lib/userError";
 import { useFormValidation } from "../hooks/useFormValidation";
 import {
   getAttendanceForStudentDate,
@@ -109,7 +111,7 @@ export function StudentProfilePage() {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
-  const { errors, clearField, clearAll, validate } = useFormValidation<
+  const { errors, clearField, clearAll, setFieldErrors } = useFormValidation<
     "name" | "rollNumber" | "studentClass" | "medium" | "phone"
   >();
 
@@ -230,14 +232,12 @@ export function StudentProfilePage() {
   };
 
   const save = async () => {
-    if (
-      !validate(() =>
-        validateStudentFields(
-          { name, rollNumber, studentClass, medium, phone },
-          { excludeStudentId: student.id },
-        ),
-      )
-    ) {
+    const formErrors = await validateStudentFormAsync(
+      { name, rollNumber, studentClass, medium, phone },
+      { excludeStudentId: student.id },
+    );
+    if (hasFormErrors(formErrors)) {
+      setFieldErrors(formErrors);
       return;
     }
     try {
@@ -256,8 +256,8 @@ export function StudentProfilePage() {
       });
       setFormOpen(false);
       await reloadStudent(student.id);
-    } catch {
-      /* actionError */
+    } catch (e) {
+      toastRollNumberInUse(toUserMessage(e));
     }
   };
 

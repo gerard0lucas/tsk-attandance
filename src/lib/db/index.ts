@@ -12,7 +12,7 @@ import type {
 import type { BranchInput } from "../branch";
 import { fetchSessionProfile } from "../session";
 import { normalizeStudentName } from "../student";
-import { sanitizeRollNumber } from "../validation";
+import { ROLL_NUMBER_IN_USE_MESSAGE, sanitizeRollNumber } from "../validation";
 import {
   toAttendance,
   toBranch,
@@ -134,6 +134,21 @@ export async function getStudentByRoll(
   const { data, error } = await q.maybeSingle();
   if (error) throw error;
   return data ? toStudent(data as StudentRow) : null;
+}
+
+/** Check roll number format and global uniqueness (students.roll_number is unique). */
+export async function validateRollNumberAvailable(
+  rollNumber: string,
+  excludeStudentId?: string,
+): Promise<string | undefined> {
+  const roll = sanitizeRollNumber(rollNumber);
+  if (!roll) return "Roll number is required.";
+  if (!/^\d+$/.test(roll)) return "Roll number must contain numbers only.";
+
+  const existing = await getStudentByRoll(roll);
+  if (existing && existing.id !== excludeStudentId) {
+    return ROLL_NUMBER_IN_USE_MESSAGE;
+  }
 }
 
 export type ListStudentsParams = {

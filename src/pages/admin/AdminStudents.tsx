@@ -33,7 +33,9 @@ import {
   parseStudentClass,
 } from "../../lib/student";
 import { schoolSelectOptions } from "../../lib/belgaumSchools";
-import { validateStudentFields, sanitizeRollNumber } from "../../lib/validation";
+import { sanitizeRollNumber, hasFormErrors } from "../../lib/validation";
+import { toastRollNumberInUse, validateStudentFormAsync } from "../../lib/studentFormValidation";
+import { toUserMessage } from "../../lib/userError";
 import { useFormValidation } from "../../hooks/useFormValidation";
 import { usePagedStudents } from "../../hooks/usePagedStudents";
 import { useScrollIntoViewOnChange } from "../../hooks/useScrollIntoViewOnChange";
@@ -66,7 +68,7 @@ export function AdminStudents() {
   const [address, setAddress] = useState("");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [photo, setPhoto] = useState<string | undefined>();
-  const { errors, clearField, clearAll, validate } = useFormValidation<
+  const { errors, clearField, clearAll, setFieldErrors } = useFormValidation<
     "name" | "rollNumber" | "studentClass" | "medium" | "phone" | "branchId"
   >();
 
@@ -145,14 +147,12 @@ export function AdminStudents() {
   };
 
   const save = async () => {
-    if (
-      !validate(() =>
-        validateStudentFields(
-          { name, rollNumber, studentClass, medium, phone, branchId },
-          { excludeStudentId: editing?.id },
-        ),
-      )
-    ) {
+    const formErrors = await validateStudentFormAsync(
+      { name, rollNumber, studentClass, medium, phone, branchId },
+      { excludeStudentId: editing?.id },
+    );
+    if (hasFormErrors(formErrors)) {
+      setFieldErrors(formErrors);
       return;
     }
     try {
@@ -190,8 +190,8 @@ export function AdminStudents() {
         reload();
         navigate(`/admin/students/${student.id}/qr`);
       }
-    } catch {
-      /* store sets actionError */
+    } catch (e) {
+      toastRollNumberInUse(toUserMessage(e));
     }
   };
 

@@ -39,6 +39,16 @@ export function sanitizeRollNumber(value: string): string {
   return value.replace(/\D/g, "");
 }
 
+export const ROLL_NUMBER_IN_USE_MESSAGE =
+  "This roll number is already assigned to another student.";
+
+export function isRollNumberInUseMessage(message?: string | null): boolean {
+  if (!message) return false;
+  return /already assigned to another student|roll number is already in use/i.test(
+    message,
+  );
+}
+
 export function validateRollNumber(value: string): string | undefined {
   const trimmed = sanitizeRollNumber(value);
   if (!trimmed) return "Roll number is required.";
@@ -57,7 +67,7 @@ export function validateRollNumberUnique(
   const duplicate = students.find(
     (s) => sanitizeRollNumber(s.rollNumber) === normalized && s.id !== excludeStudentId,
   );
-  if (duplicate) return "This roll number is already assigned to another student.";
+  if (duplicate) return ROLL_NUMBER_IN_USE_MESSAGE;
 }
 
 export function validateClass(value: string): string | undefined {

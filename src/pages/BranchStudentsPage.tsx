@@ -25,7 +25,9 @@ import {
   parseStudentClass,
 } from "../lib/student";
 import { schoolSelectOptions } from "../lib/belgaumSchools";
-import { validateStudentFields, sanitizeRollNumber } from "../lib/validation";
+import { sanitizeRollNumber, hasFormErrors } from "../lib/validation";
+import { toastRollNumberInUse, validateStudentFormAsync } from "../lib/studentFormValidation";
+import { toUserMessage } from "../lib/userError";
 import { useFormValidation } from "../hooks/useFormValidation";
 import { usePagedStudents } from "../hooks/usePagedStudents";
 import { useScrollIntoViewOnChange } from "../hooks/useScrollIntoViewOnChange";
@@ -58,7 +60,7 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [photo, setPhoto] = useState<string | undefined>();
-  const { errors, clearField, clearAll, validate } = useFormValidation<
+  const { errors, clearField, clearAll, setFieldErrors } = useFormValidation<
     "name" | "rollNumber" | "studentClass" | "medium" | "phone"
   >();
 
@@ -130,14 +132,12 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
   };
 
   const save = async () => {
-    if (
-      !validate(() =>
-        validateStudentFields(
-          { name, rollNumber, studentClass, medium, phone, branchId },
-          { excludeStudentId: editing?.id },
-        ),
-      )
-    ) {
+    const formErrors = await validateStudentFormAsync(
+      { name, rollNumber, studentClass, medium, phone, branchId },
+      { excludeStudentId: editing?.id },
+    );
+    if (hasFormErrors(formErrors)) {
+      setFieldErrors(formErrors);
       return;
     }
     try {
@@ -174,12 +174,9 @@ export function BranchStudentsPage({ basePath }: { basePath: BranchStudentsBaseP
         closeForm();
         navigate(`${basePath}/students/${student.id}/qr`);
       }
-    } catch {
-      /* store sets actionError */
+    } catch (e) {
+      toastRollNumberInUse(toUserMessage(e));
     }
-  };
-
-  if (!branchId) {
     return (
       <p className="text-sm text-mist">
         No branch assigned to your account. Ask admin to assign your branch.

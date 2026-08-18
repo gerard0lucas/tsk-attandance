@@ -83,7 +83,7 @@ function mapKnownError(code: string, message: string): string | null {
 
   if (code === "23505" || /duplicate key|unique constraint/i.test(m)) {
     if (/roll_number|roll number/i.test(m)) {
-      return "This roll number is already in use.";
+      return "This roll number is already assigned to another student.";
     }
     if (/email/i.test(m)) {
       return "An account with this email already exists.";

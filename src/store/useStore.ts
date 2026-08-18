@@ -435,6 +435,10 @@ export const useStore = create<AppState>()((set, get) => ({
       const session = get().session;
       const branchErr = branchAccessError(session, data.branchId);
       if (branchErr) throw new Error(branchErr);
+
+      const rollErr = await db.validateRollNumberAvailable(data.rollNumber);
+      if (rollErr) throw new Error(rollErr);
+
       return db.insertStudent(data);
     }),
 
@@ -447,6 +451,11 @@ export const useStore = create<AppState>()((set, get) => ({
       const targetBranch = data.branchId ?? existing.branchId;
       const branchErr = branchAccessError(session, targetBranch);
       if (branchErr) throw new Error(branchErr);
+
+      if (data.rollNumber !== undefined) {
+        const rollErr = await db.validateRollNumberAvailable(data.rollNumber, id);
+        if (rollErr) throw new Error(rollErr);
+      }
 
       return db.patchStudent(id, data);
     }),
