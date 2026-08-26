@@ -16,10 +16,30 @@ export function parseGender(value: string | undefined): Gender {
   return "na";
 }
 
-export const CLASS_OPTIONS = Array.from({ length: 12 }, (_, i) => {
-  const value = String(i + 1);
-  return { value, label: `Class ${value}` };
-});
+export const CLASS_OPTIONS = [
+  ...Array.from({ length: 12 }, (_, i) => {
+    const value = String(i + 1);
+    return { value, label: `Class ${value}` };
+  }),
+  { value: "NA", label: "NA" },
+];
+
+/** Numeric class order (1…12), then NA, then other labels. */
+export function compareClass(a: string, b: string): number {
+  const normalize = (value: string) => value.trim();
+  const left = normalize(a);
+  const right = normalize(b);
+  const leftNa = /^na$/i.test(left);
+  const rightNa = /^na$/i.test(right);
+  if (leftNa && rightNa) return 0;
+  if (leftNa) return 1;
+  if (rightNa) return -1;
+
+  const na = Number.parseInt(left, 10);
+  const nb = Number.parseInt(right, 10);
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+}
 
 export const MEDIUM_OPTIONS: { value: Medium; label: string }[] = [
   { value: "english", label: "English" },
@@ -45,9 +65,10 @@ export function normalizeLanguage(value: string | undefined): string {
   return trimmed;
 }
 
-/** Map stored class to 1–12 when possible (handles legacy values like "10-A"). */
+/** Map stored class to 1–12 or NA when possible (handles legacy values like "10-A"). */
 export function parseStudentClass(value: string): string {
   const trimmed = value.trim();
+  if (/^na$/i.test(trimmed)) return "NA";
   if (/^(?:[1-9]|1[0-2])$/.test(trimmed)) return trimmed;
   const match = trimmed.match(/^(?:[1-9]|1[0-2])(?!\d)/);
   return match?.[0] ?? "";

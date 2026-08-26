@@ -34,6 +34,7 @@ import {
   type DashboardAttendancePeriod,
 } from "../../lib/reportRanges";
 import { APP_NAME } from "../../lib/branding";
+import { compareClass } from "../../lib/student";
 import { listAttendanceInRange, listStudentsByBranch } from "../../lib/db";
 import { AttendanceOverviewTable } from "../../components/dashboard/AttendanceOverviewTable";
 import { DashboardKpiCard } from "../../components/dashboard/DashboardKpiCard";
@@ -172,7 +173,9 @@ export function AdminOverview() {
   const classOptions = useMemo(() => {
     if (!branchFilter) return [];
     const scoped = scopeActiveStudents(students, { ...filters, class: "all" });
-    return [...new Set(scoped.map((s) => s.class.trim()).filter(Boolean))].sort();
+    return [...new Set(scoped.map((s) => s.class.trim()).filter(Boolean))].sort(
+      compareClass,
+    );
   }, [students, filters, branchFilter]);
 
   const scopedStudents = useMemo(() => {

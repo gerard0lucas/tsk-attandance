@@ -73,7 +73,10 @@ export function validateRollNumberUnique(
 export function validateClass(value: string): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) return "Class is required.";
-  if (!/^(?:[1-9]|1[0-2])$/.test(trimmed)) return "Select a class from 1 to 12.";
+  if (/^na$/i.test(trimmed)) return undefined;
+  if (!/^(?:[1-9]|1[0-2])$/.test(trimmed)) {
+    return "Select a class from 1 to 12, or NA.";
+  }
 }
 
 export function validateMedium(value: string): string | undefined {

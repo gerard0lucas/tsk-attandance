@@ -1,4 +1,5 @@
 import type { AttendanceRecord, Branch, Student } from "../types";
+import { compareClass } from "./student";
 import {
   enrollmentGenderSlices,
   genderAttendanceSlices,
@@ -270,7 +271,7 @@ export function classOverviewRows(
         percent: percent(present, total),
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => compareClass(a.name, b.name));
 }
 
 export function schoolAttendanceRanks(

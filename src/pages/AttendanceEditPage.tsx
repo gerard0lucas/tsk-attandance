@@ -22,7 +22,7 @@ import {
 } from "../components/ui/TableWrap";
 import { formatTime, todayKey } from "../lib/dates";
 import { formatReportDate } from "../lib/attendanceReport";
-import { CLASS_OPTIONS, compareRollNumber, filterStudents } from "../lib/student";
+import { CLASS_OPTIONS, compareClass, compareRollNumber, filterStudents } from "../lib/student";
 import {
   normalizeDateRange,
   parseDateKey,
@@ -98,13 +98,6 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "present-first", label: "Present first" },
   { value: "absent-first", label: "Absent first" },
 ];
-
-function compareClass(a: string, b: string): number {
-  const na = Number.parseInt(a, 10);
-  const nb = Number.parseInt(b, 10);
-  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-}
 
 function sortStudentRows(
   rows: StudentAttendanceRow[],
